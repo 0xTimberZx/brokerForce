@@ -1,145 +1,32 @@
-// Shared types across apps/web and apps/api.
-// These mirror docs/Database.md's schema — if a field changes there, change it here too,
-// not independently in each app.
+import express from "express";
+import { assetsRouter } from "./routes/assets.js";
+import { pairsRouter } from "./routes/pairs.js";
+import { ortRouter, ortRankedRouter } from "./routes/ort.js";
+import { searchRouter } from "./routes/search.js";
+import { poolsRouter, poolDetailRouter } from "./routes/pools.js";
+import { backtestRouter } from "./routes/backtest.js";
 
-export type AssetClass = "blue-chip" | "stable" | "growth-exotic" | "degen";
+const app = express();
+app.use(express.json());
 
-// Per docs/ORT.md §3 — the three canonical windows ORT (and pair_metrics) are computed on.
-// Not user-selectable for the canonical ORT number; see docs/Architecture.md §5.
-export type CanonicalWindow = 30 | 90 | 200;
+// Route groups mirror docs/API.md exactly — one router per section of that doc.
+// No /watchlists/* router exists on purpose: watchlists are a client-side local-storage
+// module per docs/specs/007-watchlists/spec.md, not a server endpoint, while
+// docs/Architecture.md §5's local-storage-only auth decision holds.
+app.use("/assets", assetsRouter);
+app.use("/pairs", pairsRouter);
+app.use("/pairs", ortRouter); // /pairs/:pairId/ort* — kept in its own file since it's a distinct concern
+app.use("/pairs", ortRankedRouter); // /pairs/ort — ranked list, separate path shape from the line above
+app.use("/search", searchRouter);
+app.use("/pairs", poolsRouter); // /pairs/:assetA/:assetB/pools
+app.use("/pools", poolDetailRouter); // /pools/:poolId, /pools/:poolId/history
+app.use("/backtest", backtestRouter);
 
-// Per docs/ORT.md §6. Names are a first pass, not finalized — see docs/Glossary.md.
-export type QuadrantLabel = "prime" | "active" | "quiet" | "avoid";
+app.get("/health", (_req, res) => {
+  res.json({ status: "ok" });
+});
 
-export type TrendDirection = "toward-prime" | "away-from-prime" | "flat";
-
-// Per docs/Architecture.md's Pair Engine tiering decision + docs/ORT.md §5.
-// "active" requires a real pool with TVL >= $50,000 and 7d avg volume >= $10,000.
-// "excluded-stable" overrides that bar regardless — stable-stable pairs never
-// qualify as "active" even if they'd technically clear the threshold.
-export type PairTier = "active" | "limited" | "excluded-stable";
-
-export interface Asset {
-  symbol: string;
-  class: AssetClass;
-  marketCap: number;
-  circulatingSupply: number;
-  fullyDilutedValue: number;
-}
-
-export interface AssetCandle {
-  assetSymbol: string;
-  timestamp: string; // ISO timestamp, daily granularity for now; upgrades to hourly
-  // when 006 Backtester enters Build — see docs/Database.md §2.
-  open: number;
-  high: number;
-  low: number;
-  close: number;
-  volume: number;
-}
-
-export interface Pair {
-  id: string;
-  assetA: string;
-  assetB: string;
-  tier: PairTier;
-  createdAt: string;
-}
-
-// Per docs/Analytics.md §2 — one row per pair, per canonical window.
-export interface PairMetrics {
-  pairId: string;
-  window: CanonicalWindow;
-  correlation: number;
-  beta: number;
-  cointegrationScore: number;
-  historicalVolatility: number;
-  relativeStrength: number;
-  rangeStability: {
-    pct2: number;
-    pct5: number;
-    pct10: number;
-    pct15: number;
-  };
-  avgTimeInRangeDays: number;
-  estimatedRebalancesPerYear: number;
-  ilEstimate: number;
-  feeOpportunity: number;
-  volume: VolumeFieldSet;
-  confidence: "full" | "low";
-  computedAt: string;
-}
-
-// Per docs/Architecture.md §4 — first-class Pair Engine input, not just display data.
-export interface VolumeFieldSet {
-  avgVolume24h: number;
-  avgVolume7d: number;
-  avgVolume30d: number;
-  volumeTvlRatio: number;
-  volumeTrend: number;
-  volumeStability: number;
-  volumeShare: number;
-  feeOpportunityScore: number;
-}
-
-// Per docs/ORT.md — the composite score, kept separate from PairMetrics since it's
-// a derived value refreshed on its own cadence (docs/ORT.md §4).
-export interface OrtScore {
-  pairId: string;
-  window: CanonicalWindow;
-  score: number; // normalized 0–100
-  quadrantLabel: QuadrantLabel;
-  trendDirection: TrendDirection;
-  confidence: "full" | "low";
-  computedAt: string;
-}
-
-export interface Pool {
-  id: string;
-  pairId: string;
-  dex: string;
-  chain: string;
-  feeTier: number;
-  tvl: number;
-  volume: number;
-  activeLiquidity: number;
-  // Added to back Analytics.md §3a's Pair Popularity formula. Only populated for
-  // active-tier pools (Database.md §3) — limited/excluded-stable tier pools won't
-  // have these set, since they aren't continuously polled.
-  swapCount7d?: number;
-  uniqueLpCount?: number;
-}
-
-export interface PoolHistoryPoint {
-  poolId: string;
-  timestamp: string;
-  tvl: number;
-  volume: number;
-}
-
-// Per docs/specs/006-backtester/spec.md.
-export interface BacktestRequest {
-  pairId: string;
-  rangeMin: number;
-  rangeMax: number;
-  periodStart: string;
-  periodEnd: string;
-  feeTier?: number;
-  poolId?: string;
-}
-
-export interface BacktestResult {
-  id: string;
-  pairId: string;
-  rangeMin: number;
-  rangeMax: number;
-  periodStart: string;
-  periodEnd: string;
-  feeTier: number;
-  feesEarned: number;
-  ilEstimate: number;
-  netPnl: number;
-  timeInRangePct: number;
-  exitCount: number;
-  createdAt: string;
-}
+const port = process.env.PORT ? Number(process.env.PORT) : 4000;
+app.listen(port, () => {
+  console.log(`BrokerForce API listening on :${port}`);
+});
