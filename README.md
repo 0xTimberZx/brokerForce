@@ -39,7 +39,7 @@ packages/types — shared TypeScript types, mirrors docs/Database.md
 ## Getting Started
 
 ```bash
-npm install
+npm install 
 npm run dev:api   # API on :4000
 npm run dev:web   # Web app via Vite
 ```
