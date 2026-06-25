@@ -32,14 +32,14 @@ The monorepo wires together correctly (shared types, stubbed API routes per `doc
 docs/        — the constitution (Phase 0)
 specs/       — numbered feature specs (Phase 1)
 apps/api     — Express/TypeScript API, stubbed routes per docs/API.md
-apps/web     — React/TypeScript/Vite/Tailwind app, scaffold-only 
+apps/web     — React/TypeScript/Vite/Tailwind app, scaffold-only
 packages/types — shared TypeScript types, mirrors docs/Database.md
 ```
 
 ## Getting Started
 
 ```bash
-npm install 
+npm install
 npm run dev:api   # API on :4000
 npm run dev:web   # Web app via Vite
 ```
