@@ -1,19 +1,12 @@
-// Placeholder only — confirms React + TypeScript + Vite + Tailwind + the shared
-// @brokerforce/types package all wire together. Real UI for 001 Dashboard (and
-// every other spec) is its own piece of work, per docs/Product_Principles.md's
-// "nothing gets coded until there's a spec" discipline — this file exists to
-// validate the scaffold, not to get ahead of it.
-import type { AssetClass } from "@brokerforce/types";
-
-const exampleClasses: AssetClass[] = ["blue-chip", "stable", "growth-exotic", "degen"];
+// Renders the real 003 Pair Analysis page -- the scaffold-confirmation
+// placeholder this file used to be has done its job (proving React +
+// TypeScript + Vite + Tailwind + @brokerforce/types wire together) now that
+// there's an actual spec implementation to render instead. No router yet --
+// 001 Dashboard and 002 Search, which would normally own navigation into
+// this page, aren't built. This is the only page; add routing when there's
+// a second one to route to, not before.
+import { PairAnalysisPage } from "./pages/PairAnalysis";
 
 export default function App() {
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-neutral-50">
-      <div className="text-center space-y-2">
-        <h1 className="text-2xl font-semibold text-neutral-900">BrokerForce</h1>
-        <p className="text-neutral-500">Scaffold online. Tracked asset classes: {exampleClasses.join(", ")}.</p>
-      </div>
-    </div>
-  );
+  return <PairAnalysisPage />;
 }

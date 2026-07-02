@@ -1,10 +1,42 @@
 import { Router } from "express";
+import { query } from "@brokerforce/db";
+import type { Asset, AssetClass, AssetVerificationStatus } from "@brokerforce/types";
 
 // Per docs/API.md §2.
 export const assetsRouter = Router();
 
-assetsRouter.get("/:symbol", (req, res) => {
-  // TODO: hydrate from the `assets` table (docs/Database.md §3) — snapshot fields only;
-  // historical candles come from a separate query against asset_price_history.
-  res.status(501).json({ error: "not implemented", symbol: req.params.symbol });
+export interface AssetDbRow {
+  symbol: string;
+  class: AssetClass;
+  market_cap: string | null;
+  circulating_supply: string | null;
+  fully_diluted_value: string | null;
+  verification_status: AssetVerificationStatus;
+}
+
+export function toAsset(row: AssetDbRow): Asset {
+  return {
+    symbol: row.symbol,
+    class: row.class,
+    marketCap: row.market_cap !== null ? Number(row.market_cap) : null,
+    circulatingSupply: row.circulating_supply !== null ? Number(row.circulating_supply) : null,
+    fullyDilutedValue: row.fully_diluted_value !== null ? Number(row.fully_diluted_value) : null,
+    verificationStatus: row.verification_status,
+  };
+}
+
+assetsRouter.get("/:symbol", async (req, res) => {
+  const symbol = req.params.symbol.toUpperCase();
+  const rows = await query<AssetDbRow>(
+    `SELECT symbol, class, market_cap, circulating_supply, fully_diluted_value, verification_status
+     FROM assets WHERE symbol = $1`,
+    [symbol]
+  );
+
+  if (rows.length === 0) {
+    res.status(404).json({ error: "asset not found", symbol });
+    return;
+  }
+
+  res.json(toAsset(rows[0]));
 });

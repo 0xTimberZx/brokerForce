@@ -29,19 +29,36 @@ The monorepo wires together correctly (shared types, stubbed API routes per `doc
 ## Structure
 
 ```
-docs/        — the constitution (Phase 0)
-specs/       — numbered feature specs (Phase 1)
-apps/api     — Express/TypeScript API, stubbed routes per docs/API.md
-apps/web     — React/TypeScript/Vite/Tailwind app, scaffold-only
-packages/types — shared TypeScript types, mirrors docs/Database.md
+docs/             — the constitution (Phase 0)
+specs/            — numbered feature specs (Phase 1)
+apps/api          — Express/TypeScript API — real routes for /assets, /pairs/*, /pairs/*/ort*, /backtest, /pools/* — see docs/API.md
+apps/web          — React/TypeScript/Vite/Tailwind — real 003 Pair Analysis + 005 Pool Explorer pages
+apps/ingestion    — REAL: asset-level price/volume ingestion (CoinGecko) — see apps/ingestion/README.md
+apps/pair-engine  — REAL: pair generation + statistical metrics — see apps/pair-engine/README.md
+apps/ort-engine   — REAL: ORT composite score + quadrant/trend labeling — see apps/ort-engine/README.md
+packages/types    — shared TypeScript types, mirrors docs/Database.md
+packages/db       — Postgres/TimescaleDB schema + client, shared across apps
+packages/stats    — shared statistical primitives (IL, range-streak counting), used by apps/pair-engine and apps/api
 ```
+
+**What's real now:**
+- `apps/ingestion` + `apps/pair-engine` + `apps/ort-engine` — full data pipeline (though ort-engine produces zero scores until a pair clears the active-tier gate, which needs real pool data).
+- `apps/api` — all routes are real; `/backtest` runs real simulations; `/pools/*` implements the full tier-gated fetch model. The **pool data source** is `UnimplementedPoolSource` — it returns a `503` honestly, not fake data. Swap in a real source by writing one class in `apps/api/src/services/poolSource.ts`.
+- `apps/web` — `003 Pair Analysis` and `005 Pool Explorer` are both real pages with correct loading, empty, error, and data states.
+
+**What's still scaffold/stub:** `002 Search`, `001 Dashboard`, `007 Watchlists` routes in `apps/api` (stubs per build sequence — `001`/`002`/`007` compose from the rest and should come last); `apps/web` only has two pages with no router yet.
 
 ## Getting Started
 
 ```bash
 npm install
-npm run dev:api   # API on :4000
-npm run dev:web   # Web app via Vite
+npm run migrate           # apply packages/db/migrations against DATABASE_URL
+npm run ingest             # real asset-level ingestion — see apps/ingestion/README.md first
+npm run generate-pairs     # real pair generation — see apps/pair-engine/README.md
+npm run compute-metrics    # real statistical metrics per pair/window
+npm run compute-ort        # real ORT scoring — computes ZERO scores until a pair reaches active tier; see apps/ort-engine/README.md
+npm run dev:api            # API on :4000
+npm run dev:web            # Web app via Vite — real 003 Pair Analysis page
 ```
 
 ## Contributing

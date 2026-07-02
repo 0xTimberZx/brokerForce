@@ -4,6 +4,12 @@
 
 export type AssetClass = "blue-chip" | "stable" | "growth-exotic" | "degen";
 
+// Outcome of apps/ingestion's runtime identity verification (symbol-match
+// against the CoinGecko response). "conflict" means the most recent
+// ingestion run scrapped this asset's data rather than risk writing data
+// for the wrong token -- see apps/ingestion/README.md.
+export type AssetVerificationStatus = "verified" | "conflict" | "unverified";
+
 // Per docs/ORT.md §3 — the three canonical windows ORT (and pair_metrics) are computed on.
 // Not user-selectable for the canonical ORT number; see docs/Architecture.md §5.
 export type CanonicalWindow = 30 | 90 | 200;
@@ -22,9 +28,14 @@ export type PairTier = "active" | "limited" | "excluded-stable";
 export interface Asset {
   symbol: string;
   class: AssetClass;
-  marketCap: number;
-  circulatingSupply: number;
-  fullyDilutedValue: number;
+  // Nullable, not just typed optimistically as `number` -- a freshly
+  // scrapped 'conflict' asset (apps/ingestion's identity verification
+  // policy) or one that's never had a successful run can genuinely have no
+  // snapshot data yet. See verificationStatus for why a given row has nulls.
+  marketCap: number | null;
+  circulatingSupply: number | null;
+  fullyDilutedValue: number | null;
+  verificationStatus: AssetVerificationStatus;
 }
 
 export interface AssetCandle {
@@ -47,51 +58,120 @@ export interface Pair {
 }
 
 // Per docs/Analytics.md §2 — one row per pair, per canonical window.
+// Nullability below is precise, not blanket: correlation/beta/cointegration/
+// volatility/relativeStrength/rangeStability/timeInRange/rebalances/ilEstimate
+// are always computed together in the same code path (apps/pair-engine's
+// compute-metrics.ts) -- if a pair_metrics row exists at all, those are
+// always real numbers, never null. marketCapRatio(.Stability) can be null
+// when circulating supply is missing for either asset. feeOpportunity and
+// the pool-dependent volume fields are null until pool ingestion exists
+// (separate, later work) -- see apps/pair-engine/README.md.
 export interface PairMetrics {
   pairId: string;
   window: CanonicalWindow;
-  correlation: number;
-  beta: number;
-  cointegrationScore: number;
-  historicalVolatility: number;
-  relativeStrength: number;
+  // None of these are NOT NULL in the schema (packages/db/migrations/001_init.sql) --
+  // null whenever a metric couldn't be computed for some reason short of the
+  // whole row not existing (e.g. a future per-metric data-quality check).
+  // Components already handle these defensively as nullable; this type
+  // declaration was the thing out of sync, not the code -- fixed here rather
+  // than forcing non-null assertions into the API layer for a guarantee the
+  // schema doesn't actually make.
+  correlation: number | null;
+  beta: number | null;
+  cointegrationScore: number | null;
+  historicalVolatility: number | null;
+  relativeStrength: number | null;
+  // Backs ORT's "Market Cap Stability" weighted component. Approximated --
+  // see the comment on this column in packages/db/migrations/001_init.sql.
+  // Null when circulating supply is missing for either asset.
+  marketCapRatio: number | null;
+  marketCapRatioStability: number | null;
   rangeStability: {
-    pct2: number;
-    pct5: number;
-    pct10: number;
-    pct15: number;
+    pct2: number | null;
+    pct5: number | null;
+    pct10: number | null;
+    pct15: number | null;
   };
-  avgTimeInRangeDays: number;
-  estimatedRebalancesPerYear: number;
-  ilEstimate: number;
-  feeOpportunity: number;
+  avgTimeInRangeDays: number | null;
+  estimatedRebalancesPerYear: number | null;
+  ilEstimate: number | null;
+  // Null until pool-level fee-tier/TVL data exists -- not yet ingested.
+  feeOpportunity: number | null;
   volume: VolumeFieldSet;
   confidence: "full" | "low";
   computedAt: string;
 }
 
 // Per docs/Architecture.md §4 — first-class Pair Engine input, not just display data.
+// avgVolume7d/30d and the trend/stability figures need 7/30 days of aligned
+// history respectively to compute at all (apps/pair-engine's
+// compute-metrics.ts) -- null, not zero, when there isn't enough history
+// yet. volumeTvlRatio/volumeShare/feeOpportunityScore are null until pool
+// ingestion exists.
 export interface VolumeFieldSet {
-  avgVolume24h: number;
-  avgVolume7d: number;
-  avgVolume30d: number;
-  volumeTvlRatio: number;
-  volumeTrend: number;
-  volumeStability: number;
-  volumeShare: number;
-  feeOpportunityScore: number;
+  avgVolume24h: number | null;
+  avgVolume7d: number | null;
+  avgVolume30d: number | null;
+  volumeTvlRatio: number | null;
+  volumeTrend: number | null;
+  volumeStability: number | null;
+  volumeShare: number | null;
+  feeOpportunityScore: number | null;
 }
 
 // Per docs/ORT.md — the composite score, kept separate from PairMetrics since it's
 // a derived value refreshed on its own cadence (docs/ORT.md §4).
+// The seven ORT component keys, matching apps/ort-engine/src/score.ts's
+// ORT_WEIGHTS exactly -- kept here too since the frontend breakdown UI
+// (specs/004-ort-engine/spec4.md) needs to know the full set of possible
+// keys, not just whichever ones happen to be present on a given score.
+export type OrtComponent =
+  | "volume"
+  | "rangeStability"
+  | "volatility"
+  | "timeInRange"
+  | "correlation"
+  | "liquidity"
+  | "marketCapStability";
+
 export interface OrtScore {
   pairId: string;
   window: CanonicalWindow;
   score: number; // normalized 0–100
-  quadrantLabel: QuadrantLabel;
-  trendDirection: TrendDirection;
+  // Null when the pair's own avgVolume7d or historicalVolatility was
+  // missing (apps/ort-engine/src/compute-ort.ts) -- the composite score can
+  // still exist without a quadrant if other components were available.
+  quadrantLabel: QuadrantLabel | null;
+  // Null for the 200d window by design (Analytics.md §4: 200d is excluded
+  // from the trend comparison, it changes too slowly to be meaningful) --
+  // also null if either the 30d or 90d quadrant itself is unavailable.
+  trendDirection: TrendDirection | null;
+  // A component key is absent (not present, not set to 0) if it was
+  // excluded from this score and its weight redistributed -- see
+  // apps/ort-engine/src/score.ts's renormalization logic.
+  componentScores: Partial<Record<OrtComponent, number>>;
   confidence: "full" | "low";
   computedAt: string;
+}
+
+// Per docs/API.md §5's history endpoint -- a single window's worth of
+// historical scores for the sparkline, not the full breakdown (the
+// breakdown is only needed for the current score, not every past point).
+export interface OrtScoreHistoryPoint {
+  score: number;
+  quadrantLabel: QuadrantLabel | null;
+  confidence: "full" | "low";
+  computedAt: string;
+}
+
+// Per docs/API.md §5's ranked-list endpoint.
+export interface OrtRankedPair {
+  pairId: string;
+  assetA: string;
+  assetB: string;
+  score: number;
+  quadrantLabel: QuadrantLabel | null;
+  confidence: "full" | "low";
 }
 
 export interface Pool {
@@ -100,24 +180,51 @@ export interface Pool {
   dex: string;
   chain: string;
   feeTier: number;
-  tvl: number;
-  volume: number;
-  activeLiquidity: number;
+  // None of these are NOT NULL in the schema (a pool can exist with
+  // unknown/unfetched TVL, e.g. mid-ingestion) -- same class of
+  // type-vs-schema mismatch already fixed twice before on PairMetrics and
+  // OrtScore. Fixed here too rather than letting a third instance through.
+  tvl: number | null;
+  volume: number | null;
+  activeLiquidity: number | null;
   // Added to back Analytics.md §3a's Pair Popularity formula. Only populated for
   // active-tier pools (Database.md §3) — limited/excluded-stable tier pools won't
   // have these set, since they aren't continuously polled.
   swapCount7d?: number;
   uniqueLpCount?: number;
+  // Per specs/005-pool-examine/spec5.md's Data Requirements. Each bucket is
+  // a price tick + the liquidity concentrated there, around current price.
+  // Optional/absent rather than empty array when not yet fetched.
+  activeLiquidityDistribution?: { priceTick: number; liquidity: number }[];
 }
 
 export interface PoolHistoryPoint {
   poolId: string;
   timestamp: string;
-  tvl: number;
-  volume: number;
+  tvl: number | null;
+  volume: number | null;
 }
 
-// Per docs/specs/006-backtester/spec.md.
+// Per specs/005-pool-examine/spec5.md's Data Requirements: "Volume/TVL ratio
+// per pool (reusing the same ratio logic as the Pair Engine's
+// volume_tvl_ratio, applied at the pool level rather than the aggregate
+// pair level)" -- this is a derived field, not stored, computed at request
+// time the same way apps/pair-engine computes the pair-level version.
+export interface PoolWithDerived extends Pool {
+  volumeTvlRatio: number | null;
+}
+
+export interface PoolListResponse {
+  pools: PoolWithDerived[];
+  // Distinguishes "checked, nothing matched the filters" from "checked,
+  // nothing exists for this pair at all" from "still fetching live" --
+  // per spec5.md's empty/loading-state acceptance criteria, these three
+  // need different UI treatment, not one generic empty state.
+  tier: "active" | "limited" | "excluded-stable";
+  source: "stored" | "live-fetch" | "live-fetch-cached";
+}
+
+// Per docs/specs/006-backtests/spec6.md.
 export interface BacktestRequest {
   pairId: string;
   rangeMin: number;
@@ -126,6 +233,16 @@ export interface BacktestRequest {
   periodEnd: string;
   feeTier?: number;
   poolId?: string;
+  // Not in the original spec6.md input list -- a real, undocumented gap
+  // found while implementing: there's no way to express a dollar P&L
+  // without a position size. Optional; the service defaults it. See
+  // apps/api/src/services/backtest.ts's header comment.
+  positionSizeUsd?: number;
+}
+
+export interface BacktestExitEvent {
+  date: string;
+  type: "exit" | "re-entry";
 }
 
 export interface BacktestResult {
@@ -139,7 +256,47 @@ export interface BacktestResult {
   feesEarned: number;
   ilEstimate: number;
   netPnl: number;
+  netPnlPct: number;
   timeInRangePct: number;
   exitCount: number;
+  exitTimeline: BacktestExitEvent[];
+  positionSizeUsd: number;
+  // Per spec6.md's acceptance criteria: "[granularity] is disclosed to the
+  // user... so a sophisticated user understands the resolution limitation."
+  // Currently always "daily" -- see docs/Database.md §2's still-pending
+  // hourly upgrade, which this field will reflect once that's done.
+  dataGranularity: "daily" | "hourly";
+  // Surfaces the fee-estimate caveat from backtest.ts's header comment
+  // directly in the API response, not just in code comments a frontend
+  // consumer would never see.
+  assumedPoolShareUsed: number;
   createdAt: string;
+}
+
+// Per docs/API.md §3 -- GET /pairs/:assetA/:assetB. metrics is null when the
+// pair exists but hasn't had its statistics computed yet (apps/pair-engine
+// hasn't run, or there wasn't enough aligned history) -- a real, expected
+// state for 003 Pair Analysis to render, not an error case.
+export interface PairDetailResponse {
+  pairId: string;
+  assetA: string;
+  assetB: string;
+  tier: PairTier;
+  window: CanonicalWindow;
+  metrics: PairMetrics | null;
+}
+
+export interface PairHistoryPoint {
+  date: string;
+  closeA: number;
+  closeB: number;
+  delta: number | null; // null on the series' first point -- no prior day to diff against
+}
+
+export interface PairHistoryResponse {
+  pairId: string;
+  assetA: string;
+  assetB: string;
+  window: CanonicalWindow;
+  series: PairHistoryPoint[];
 }

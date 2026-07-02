@@ -1,6 +1,6 @@
 import { Router } from "express";
 
-// Per docs/API.md §4 and docs/specs/002-search/spec.md.
+// Per docs/API.md §4 and docs/specs/002-search/spec2.md.
 export const searchRouter = Router();
 
 searchRouter.get("/", (req, res) => {

@@ -32,7 +32,13 @@ Storage at current scale is genuinely cheap regardless of resolution: ~17 tracke
 
 **Decided: no retention cap.** Keep all raw data indefinitely at whatever the current granularity is (daily now, hourly once `006` triggers the upgrade in §2). **Revisit once active-tier pool count exceeds 50, or once hourly granularity has been live for 9 months** — whichever comes first. At that point there's real usage data and real table sizes to size an actual downsampling policy against, instead of guessing now.
 
-## 5. Core Tables
+## 5. Token Identity Conflict Policy
+
+Per `assets` table below: every ingestion run verifies an asset's identity by comparing the source's returned symbol against the expected ticker. **Any asset that fails this check is scrapped for that run — no price or snapshot data is written using unverified data — and replaced with a configured fallback id, if one exists.** Outcome is recorded in `assets.verification_status` (`verified` / `conflict` / `unverified`), not just logged.
+
+This automated check can confirm a broken/wrong id, but cannot fully resolve a genuine ticker collision (two real, unrelated projects sharing a symbol) — both candidates could pass equally. That case still needs a human to confirm once; a passing fallback check is evidence of "not broken," not proof of "correct." Full detail and the current known collision case (SKY) in `apps/ingestion/README.md`.
+
+## 6. Core Tables
 
 **`assets`**
 `symbol`, `class` (blue chip / stable / growth-exotic / degen), `market_cap`, `circulating_supply`, `fully_diluted_value` — current snapshot fields; historical OHLCV lives in the time-series tables below, not here.
@@ -58,17 +64,17 @@ Storage at current scale is genuinely cheap regardless of resolution: ~17 tracke
 **`backtest_results`**
 `id`, `pair_id`, `range_min`, `range_max`, `period_start`, `period_end`, `fee_tier`, `fees_earned`, `il_estimate`, `net_pnl`, `time_in_range_pct`, `exit_count`, `created_at`. Persisted per `006 Backtester`'s requirement that simulations be retrievable, not ephemeral-only.
 
-## 6. What's Deliberately Not Here
+## 7. What's Deliberately Not Here
 
 **No `users` or `watchlists` table.** Per `Architecture.md` §5's auth decision, watchlists currently live in local browser storage, not the database. If/when wallet-based auth lands, this section needs a real schema for users and server-side watchlist sync — not built preemptively.
 
-## 7. Refresh Behavior
+## 8. Refresh Behavior
 
 `pair_metrics` and `ort_scores` are recomputed on the per-window cadence defined in `ORT.md` §4 — which is staged to match the granularity timeline in §2, not a fixed schedule. **Right now, with daily price/volume ingestion, all three windows effectively refresh daily** (refreshing faster than the underlying data changes would just recompute the same value). The hourly/hourly/4hr cadence described earlier in this project's planning applies once `006 Backtester` triggers the hourly granularity upgrade — see `ORT.md` §4 for the full staged timeline. Recomputation happens via scheduled jobs, not on read. The API layer (`API.md`) serves the most recently computed row plus its `computed_at` timestamp, so the frontend can show data as "as of" rather than implying live computation on every request.
 
 Pool-level data (§3) follows a separate, tier-gated refresh model — not the window-based cadence above, since it's not computing a statistic over a window, just reflecting current on-chain state for active-tier pairs or live-fetching for everything else.
 
-## 8. Open Items
+## 9. Open Items
 
 - Trigger the hourly upgrade (§2) when `006 Backtester` actually enters the Build phase — don't build it before then.
 

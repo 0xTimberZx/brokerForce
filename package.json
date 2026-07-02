@@ -10,6 +10,12 @@
   "scripts": {
     "dev:web": "npm run dev --workspace=apps/web",
     "dev:api": "npm run dev --workspace=apps/api",
+    "migrate": "npm run migrate --workspace=packages/db",
+    "ingest": "npm run ingest --workspace=apps/ingestion",
+    "generate-pairs": "npm run generate-pairs --workspace=apps/pair-engine",
+    "compute-metrics": "npm run compute-metrics --workspace=apps/pair-engine",
+    "compute-ort": "npm run compute-ort --workspace=apps/ort-engine",
+    "mark-active": "npm run mark-active --workspace=apps/ort-engine --",
     "build": "npm run build --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",

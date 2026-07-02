@@ -12,7 +12,10 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@brokerforce/db": "*",
+    "@brokerforce/stats": "*",
     "@brokerforce/types": "*",
+    "dotenv": "^16.4.0",
     "express": "^4.19.0"
   },
   "devDependencies": {

@@ -36,18 +36,24 @@ Ranked list of pairs by ORT score within a single window. Used directly by `001 
 ## 6. Pools
 
 `GET /pairs/:assetA/:assetB/pools?chain=&dex=&feeTier=&minTvl=`
-Filtered pool list for a pair. Used by `005 Pool Explorer`.
+Filtered pool list for a pair, AND logic across all provided filters. Returns `PoolListResponse` including `pools`, `tier`, and `source` ("stored", "live-fetch", or "live-fetch-cached"). Used by `005 Pool Explorer`.
+
+**Active-tier pairs** read from the `pools` table. **Limited/excluded-stable-tier pairs** trigger a live, on-demand fetch via `UnimplementedPoolSource` (the real source plug-in point in `apps/api/src/services/poolSource.ts`), bounded by a 5-second timeout and cached for 10 minutes per `Database.md` §3. Right now `UnimplementedPoolSource` returns a `503` with a clear unavailable reason -- the frontend renders `PoolFetchErrorState`, not a blank.
 
 `GET /pools/:poolId`
-Single pool detail, including active liquidity distribution. Used by `005`.
+Single pool detail including `activeLiquidityDistribution` if populated. Only reaches stored rows (active-tier pools); live-fetched pools have `id: ""` and no detail row. Returns `PoolWithDerived`. Used by `005`.
 
-`GET /pools/:poolId/history?window=`
-TVL/volume time series for the pool detail panel. Used by `005`.
+`GET /pools/:poolId/history`
+TVL/volume time series for the detail-panel sparklines. Returns an empty array (not an error) when no history exists yet, per spec5.md acceptance criteria.
 
 ## 7. Backtester
 
 `POST /backtest`
-Body: pair, range (min/max or %-width), period, optional pool/fee-tier. Returns fees earned, IL estimate, net P&L, time-in-range %, exit timeline. Used by `006 Backtester`.
+Body: `pairId`, `rangeMin`/`rangeMax` (explicit bounds — the API takes explicit bounds only; a %-width input is a frontend concern that translates to these before calling, via `widthPctToRange` in `apps/api/src/services/backtest.ts`), `periodStart`/`periodEnd`, optional `feeTier` (defaults to 0.3%), optional `positionSizeUsd` (defaults to $10,000 — see the caveat below). Returns fees earned, IL estimate, net P&L (dollar and %), time-in-range %, exit timeline, and `assumedPoolShareUsed`. Used by `006 Backtester`.
+
+**Honest caveat, not glossed over:** `feesEarnedUsd` is a directional/comparative estimate, not a precise prediction — it needs a position size and pool-liquidity share, neither of which `spec6.md` originally specified as inputs, and neither of which has real pool data behind it yet (pool ingestion is separate, later work). `timeInRangePct`, `exitCount`, and `ilEstimate` are precise — they only depend on real price history. Full detail in `apps/api/src/services/backtest.ts`'s header comment.
+
+**Granularity:** results currently run on daily price data and report `dataGranularity: "daily"` accordingly, per `Database.md` §2's still-pending hourly upgrade — the route is functional now (the spec permits running on daily data with disclosure), but range-exit timing won't be fully accurate until that upgrade happens.
 
 `GET /backtest/:simulationId`
 Retrieve a previously run, persisted simulation (`backtest_results` row). Used by `006` for scenario comparison and revisiting past runs.
