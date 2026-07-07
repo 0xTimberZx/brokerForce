@@ -154,12 +154,12 @@ pairsRouter.get("/:assetA/:assetB/history", async (req, res) => {
 
   const [rowsA, rowsB] = await Promise.all([
     query<{ date: string; close: string }>(
-      `SELECT "timestamp"::date AS date, close FROM asset_price_history
+      `SELECT "timestamp"::date::text AS date, close FROM asset_price_history
        WHERE asset_symbol = $1 ORDER BY "timestamp" DESC LIMIT $2`,
       [a, window]
     ),
     query<{ date: string; close: string }>(
-      `SELECT "timestamp"::date AS date, close FROM asset_price_history
+      `SELECT "timestamp"::date::text AS date, close FROM asset_price_history
        WHERE asset_symbol = $1 ORDER BY "timestamp" DESC LIMIT $2`,
       [b, window]
     ),
