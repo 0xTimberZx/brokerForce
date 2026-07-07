@@ -6,7 +6,7 @@ import { getPoolsForPair } from "../services/poolService.js";
 import {
   PoolSourceNotImplementedError,
   PoolSourceUnavailableError,
-  GeckoTerminalPoolSource,
+  defaultPoolSource,
 } from "@brokerforce/pool-sources";
 
 // Per docs/API.md §6 and docs/specs/005-pool-examine/spec5.md.
@@ -16,7 +16,7 @@ export const poolsRouter = Router();
 // one line (and writing the class it instantiates), per
 // @brokerforce/pool-sources' poolSource.ts header comment. Not per-request since a real
 // source implementation may want to hold its own connection/client state.
-const poolSource = new GeckoTerminalPoolSource();
+const poolSource = defaultPoolSource();
 
 export function parseFilters(q: Record<string, unknown>) {
   return {

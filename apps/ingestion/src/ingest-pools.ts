@@ -30,7 +30,7 @@
 import "dotenv/config";
 import { query, closePool } from "@brokerforce/db";
 import {
-  GeckoTerminalPoolSource,
+  defaultPoolSource,
   PoolSourceUnavailableError,
   type PoolSource,
   type RawPoolData,
@@ -116,7 +116,11 @@ async function fetchGateEvidence(pairId: string): Promise<PoolGateEvidence[]> {
 }
 
 async function main() {
-  const source: PoolSource = new GeckoTerminalPoolSource();
+  // DexScreener-first fallback chain -- GitHub runners' shared egress IPs
+  // keep GeckoTerminal's 30/min public limit permanently exhausted (the
+  // second automated run 429'd on every single pair), while DexScreener's
+  // 300/min absorbs a 190-pair sweep with room to spare.
+  const source: PoolSource = defaultPoolSource();
 
   // excluded-stable is filtered at the query -- never polled, never promoted.
   const pairs = await query<PairRow>(
