@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import type { CanonicalWindow, PairDetailResponse, PairHistoryResponse } from "@brokerforce/types";
 import { fetchPairDetail, fetchPairHistory, PairNotFoundError } from "../api/client";
+import { recordView } from "../store/recentlyViewedStore";
 import { PairSelector } from "../components/PairSelector";
 import { ORTPreviewChip } from "../components/ORTPreviewChip";
 import { StatisticsSummaryGrid } from "../components/StatisticsSummaryGrid";
@@ -19,8 +21,14 @@ type LoadState =
   | { status: "loaded"; detail: PairDetailResponse; history: PairHistoryResponse | null };
 
 export function PairAnalysisPage() {
-  const [assetA, setAssetA] = useState("BTC");
-  const [assetB, setAssetB] = useState("ETH");
+  // The pair now lives in the URL (/pairs/:assetA/:assetB), not component
+  // state -- 001 Dashboard links here, and a shareable/bookmarkable address
+  // is the point of having a router. The selector navigates; navigation
+  // drives loading.
+  const params = useParams();
+  const navigate = useNavigate();
+  const assetA = (params.assetA ?? "").toUpperCase();
+  const assetB = (params.assetB ?? "").toUpperCase();
   const [window, setWindow] = useState<CanonicalWindow>(90);
   const [state, setState] = useState<LoadState>({ status: "idle" });
 
@@ -28,6 +36,10 @@ export function PairAnalysisPage() {
     setState({ status: "loading" });
     try {
       const detail = await fetchPairDetail(a, b, w);
+      // Per spec1.md: 003 records the view on successful load, so the
+      // Dashboard's recently-viewed list reflects real visits only (a 404'd
+      // symbol typo shouldn't appear there).
+      recordView({ pairId: detail.pairId, assetA: detail.assetA, assetB: detail.assetB });
       // History fetched separately and allowed to fail independently --
       // stats and the chart are different facts about the pair, and one
       // failing shouldn't take the other down with it.
@@ -49,25 +61,35 @@ export function PairAnalysisPage() {
 
   useEffect(() => {
     load(assetA, assetB, window);
-    // Deliberately NOT re-running on assetA/assetB change here -- only on
-    // mount and on explicit window changes for the currently-loaded pair.
-    // PairSelector's onSubmit drives asset changes directly (see handleSelect
-    // below), so this effect only needs to watch `window`.
-  }, [window]);
+    // Re-runs when the URL pair changes (selector navigation, dashboard
+    // links, back/forward) or the window toggles -- the URL is the single
+    // source of truth for which pair this page shows.
+  }, [assetA, assetB, window]);
 
   function handleSelect(a: string, b: string) {
-    setAssetA(a);
-    setAssetB(b);
-    load(a, b, window);
+    navigate(`/pairs/${a}/${b}`);
   }
 
   return (
-    <div className="min-h-screen bg-bg-deep p-6 md:p-10">
-      <div className="max-w-5xl mx-auto space-y-6">
+    <div>
+      <div className="space-y-6">
         <header className="flex flex-wrap items-center justify-between gap-4">
           <div>
-            <h1 className="font-display text-xl text-ink">BrokerForce</h1>
-            <p className="font-body text-xs text-ink-muted">Pair Analysis</p>
+            <h1 className="font-display text-xl text-ink">Pair Analysis</h1>
+            <p className="font-body text-xs text-ink-muted">
+              {assetA}/{assetB}
+              {state.status === "loaded" && (
+                <>
+                  {" · "}
+                  <Link
+                    to={`/pairs/${assetA}/${assetB}/pools`}
+                    className="text-ink hover:underline underline-offset-4"
+                  >
+                    View pools →
+                  </Link>
+                </>
+              )}
+            </p>
           </div>
           <div className="flex items-center gap-4">
             <PairSelector defaultAssetA={assetA} defaultAssetB={assetB} onSubmit={handleSelect} />

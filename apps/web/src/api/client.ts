@@ -5,7 +5,7 @@
 // failure -- conflating any two of these would mislead the person using the
 // page about what's actually true.
 
-import type { PairDetailResponse, PairHistoryResponse, CanonicalWindow, OrtScore, PoolListResponse, PoolWithDerived, PoolHistoryPoint } from "@brokerforce/types";
+import type { PairDetailResponse, PairHistoryResponse, CanonicalWindow, OrtScore, OrtRankedPair, PoolListResponse, PoolWithDerived, PoolHistoryPoint } from "@brokerforce/types";
 
 // Defaults to the Vite dev proxy (vite.config.ts rewrites /api/* to apps/api
 // with no CORS needed, since the browser only ever talks to the Vite dev
@@ -72,6 +72,14 @@ export async function fetchOrtScoreSafe(pairId: string, window: CanonicalWindow)
   } catch {
     return null;
   }
+}
+
+/** Ranked pairs by ORT score for 001 Dashboard's Top Opportunities panel --
+ * reuses 004's ranked endpoint directly (spec1.md: same ranking Pair
+ * Explorer would show, never a separately maintained list). An empty array
+ * is the expected state until pairs clear the active-tier gate. */
+export async function fetchOrtRanked(window: CanonicalWindow, limit: number): Promise<OrtRankedPair[]> {
+  return getJson<OrtRankedPair[]>(`/pairs/ort?sort=desc&window=${window}&limit=${limit}`);
 }
 
 export async function fetchPoolsForPair(

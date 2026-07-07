@@ -69,7 +69,7 @@ export function PoolExplorerPage({ assetA, assetB, onSimulatePool }: PoolExplore
   };
 
   return (
-    <div className="max-w-5xl mx-auto px-4 py-8 space-y-6">
+    <div className="space-y-6">
       <div className="flex items-baseline justify-between">
         <h2 className="font-display text-xl text-ink">
           Pools <span className="text-ink-muted">·</span> {assetA}/{assetB}
