@@ -23,7 +23,8 @@ const COLOR_INK_MUTED = "#8FA39B";
 const COLOR_LINE = "#2A3A35";
 
 export function PairReturnChart({ history, assetA, assetB }: PairReturnChartProps) {
-  if (!history || history.series.length === 0) {
+  const firstPoint = history?.series[0];
+  if (!history || !firstPoint) {
     return (
       <div className="border border-line bg-bg-panel p-6 text-ink-muted font-body text-sm">
         No price history available for this pair yet.
@@ -37,8 +38,8 @@ export function PairReturnChart({ history, assetA, assetB }: PairReturnChartProp
   // line -- that color is reserved for the ORT score specifically, per the
   // page's design plan; the two lines are distinguished by tone and dash
   // instead, keeping the chart inside the "one saturated accent" discipline.
-  const firstA = history.series[0].closeA;
-  const firstB = history.series[0].closeB;
+  const firstA = firstPoint.closeA;
+  const firstB = firstPoint.closeB;
   const chartData = history.series.map((p) => ({
     date: p.date,
     [assetA]: (p.closeA / firstA) * 100,

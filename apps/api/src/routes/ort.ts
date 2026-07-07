@@ -48,7 +48,8 @@ ortRouter.get("/:pairId/ort", async (req, res) => {
     [req.params.pairId, window]
   );
 
-  if (rows.length === 0) {
+  const row = rows[0];
+  if (!row) {
     // Distinguish "pair exists but has no ORT score" (limited/excluded-stable
     // tier, or active-tier but apps/ort-engine hasn't run yet) from a real
     // 404 -- this endpoint doesn't know if the pairId itself is valid (that's
@@ -59,7 +60,7 @@ ortRouter.get("/:pairId/ort", async (req, res) => {
     return;
   }
 
-  res.json(toOrtScore(rows[0]));
+  res.json(toOrtScore(row));
 });
 
 // GET /pairs/:pairId/ort/history?window=

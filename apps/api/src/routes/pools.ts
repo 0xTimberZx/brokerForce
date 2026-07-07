@@ -85,12 +85,11 @@ poolDetailRouter.get("/:poolId", async (req, res) => {
     [req.params.poolId]
   );
 
-  if (rows.length === 0) {
+  const r = rows[0];
+  if (!r) {
     res.status(404).json({ error: "pool not found", poolId: req.params.poolId });
     return;
   }
-
-  const r = rows[0];
   const tvl = r.tvl === null ? null : Number(r.tvl);
   const volume = r.volume === null ? null : Number(r.volume);
   res.json({

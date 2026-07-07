@@ -136,7 +136,7 @@ pairsRouter.get("/:assetA/:assetB", async (req, res) => {
     // aligned history -- see compute-metrics.ts's MIN_POINTS_FOR_STATS
     // skip). The pair existing and its metrics existing are different facts;
     // conflating them into one error would hide which one is actually true.
-    metrics: metricsRows.length > 0 ? toPairMetrics(metricsRows[0]) : null,
+    metrics: metricsRows[0] ? toPairMetrics(metricsRows[0]) : null,
   };
   res.json(response);
 });
@@ -181,8 +181,14 @@ pairsRouter.get("/:assetA/:assetB/history", async (req, res) => {
   // packages/ if this duplication grows beyond this one calculation.
   const delta: (number | null)[] = [null]; // no return for the first day
   for (let i = 1; i < series.length; i++) {
-    const returnA = Math.log(series[i].closeA / series[i - 1].closeA);
-    const returnB = Math.log(series[i].closeB / series[i - 1].closeB);
+    const curr = series[i];
+    const prev = series[i - 1];
+    if (!curr || !prev) {
+      delta.push(null);
+      continue;
+    }
+    const returnA = Math.log(curr.closeA / prev.closeA);
+    const returnB = Math.log(curr.closeB / prev.closeB);
     delta.push(returnA - returnB);
   }
 
@@ -191,7 +197,7 @@ pairsRouter.get("/:assetA/:assetB/history", async (req, res) => {
     assetA: a,
     assetB: b,
     window,
-    series: series.map((point, i) => ({ ...point, delta: delta[i] })),
+    series: series.map((point, i) => ({ ...point, delta: delta[i] ?? null })),
   };
   res.json(response);
 });

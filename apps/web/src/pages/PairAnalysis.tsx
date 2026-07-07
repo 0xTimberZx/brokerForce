@@ -53,7 +53,6 @@ export function PairAnalysisPage() {
     // mount and on explicit window changes for the currently-loaded pair.
     // PairSelector's onSubmit drives asset changes directly (see handleSelect
     // below), so this effect only needs to watch `window`.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [window]);
 
   function handleSelect(a: string, b: string) {

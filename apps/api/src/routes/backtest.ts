@@ -42,11 +42,11 @@ backtestRouter.post("/", async (req, res) => {
     `SELECT id, asset_a, asset_b FROM pairs WHERE id = $1`,
     [body.pairId]
   );
-  if (pairRows.length === 0) {
+  const pair = pairRows[0];
+  if (!pair) {
     res.status(404).json({ error: "pair not found", pairId: body.pairId });
     return;
   }
-  const pair = pairRows[0];
 
   const [historyA, historyB] = await Promise.all([
     fetchPriceHistoryForPeriod(pair.asset_a, body.periodStart, body.periodEnd),
@@ -142,8 +142,13 @@ backtestRouter.post("/", async (req, res) => {
     ]
   );
 
+  const inserted = insertRows[0];
+  if (!inserted) {
+    throw new Error("INSERT INTO backtest_results returned no rows");
+  }
+
   const response: BacktestResult = {
-    id: insertRows[0].id,
+    id: inserted.id,
     pairId: pair.id,
     rangeMin: body.rangeMin,
     rangeMax: body.rangeMax,
@@ -160,7 +165,7 @@ backtestRouter.post("/", async (req, res) => {
     positionSizeUsd: result.positionSizeUsd,
     dataGranularity: "daily",
     assumedPoolShareUsed: result.assumedPoolShareUsed,
-    createdAt: insertRows[0].created_at,
+    createdAt: inserted.created_at,
   };
 
   res.json(shortenedNote ? { ...response, note: shortenedNote } : response);
@@ -194,12 +199,11 @@ backtestRouter.get("/:simulationId", async (req, res) => {
     [req.params.simulationId]
   );
 
-  if (rows.length === 0) {
+  const r = rows[0];
+  if (!r) {
     res.status(404).json({ error: "simulation not found", simulationId: req.params.simulationId });
     return;
   }
-
-  const r = rows[0];
   const result: BacktestResult = {
     id: r.id,
     pairId: r.pair_id,

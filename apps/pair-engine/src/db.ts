@@ -56,7 +56,11 @@ export async function upsertPair(
      RETURNING id`,
     [a, b, defaultTier]
   );
-  return rows[0].id;
+  const row = rows[0];
+  if (!row) {
+    throw new Error(`upsertPair(${a}, ${b}): INSERT ... RETURNING returned no rows`);
+  }
+  return row.id;
 }
 
 export async function fetchActivePairs(): Promise<
