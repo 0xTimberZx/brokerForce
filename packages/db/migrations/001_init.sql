@@ -111,8 +111,6 @@ CREATE TABLE pair_metrics (
   -- not a true historical market-cap series -- there isn't one (assets only
   -- stores a current snapshot). This assumes supply hasn't moved much over
   -- the window, which is false for tokens with active unlocks/burns/mints.
-  market_cap_ratio NUMERIC,
-  market_cap_ratio_stability NUMERIC,
   -- Volume field set (Architecture.md §4) -- first-class Pair Engine input.
   avg_volume_24h NUMERIC,
   avg_volume_7d NUMERIC,
