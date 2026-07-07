@@ -7,7 +7,18 @@
 -- (kebab-case) so a row read straight out of Postgres is already a valid TS
 -- value with no translation layer in between.
 
-CREATE EXTENSION IF NOT EXISTS timescaledb;
+-- TimescaleDB is preferred but OPTIONAL: managed Postgres providers without
+-- the extension (e.g. Supabase) still get a fully working schema -- the
+-- time-series tables are just plain tables there. Architecture.md §6's
+-- rationale for TimescaleDB (cheap daily->hourly upgrade) still holds where
+-- the extension exists; where it doesn't, current data volumes (~17 assets
+-- daily, <1M rows/yr) are trivial for plain Postgres anyway.
+DO $$
+BEGIN
+  CREATE EXTENSION IF NOT EXISTS timescaledb;
+EXCEPTION WHEN OTHERS THEN
+  RAISE NOTICE 'timescaledb extension unavailable; time-series tables will be plain PostgreSQL tables.';
+END $$;
 
 -- Enumerated types -----------------------------------------------------------
 
@@ -60,7 +71,12 @@ CREATE TABLE asset_price_history (
   PRIMARY KEY (asset_symbol, "timestamp")
 );
 
-SELECT create_hypertable('asset_price_history', 'timestamp', if_not_exists => TRUE);
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'timescaledb') THEN
+    PERFORM create_hypertable('asset_price_history', 'timestamp', if_not_exists => TRUE);
+  END IF;
+END $$;
 
 -- pairs -----------------------------------------------------------------------
 CREATE TABLE pairs (
@@ -162,7 +178,12 @@ CREATE TABLE ort_score_history (
   computed_at TIMESTAMPTZ NOT NULL
 );
 
-SELECT create_hypertable('ort_score_history', 'computed_at', if_not_exists => TRUE);
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'timescaledb') THEN
+    PERFORM create_hypertable('ort_score_history', 'computed_at', if_not_exists => TRUE);
+  END IF;
+END $$;
 
 -- pools ---------------------------------------------------------------------
 -- swap_count_7d and unique_lp_count back Analytics.md §3a's Pair Popularity
@@ -203,7 +224,12 @@ CREATE TABLE pool_history (
   volume NUMERIC
 );
 
-SELECT create_hypertable('pool_history', 'timestamp', if_not_exists => TRUE);
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'timescaledb') THEN
+    PERFORM create_hypertable('pool_history', 'timestamp', if_not_exists => TRUE);
+  END IF;
+END $$;
 
 -- backtest_results ------------------------------------------------------------
 -- Persisted per 006 Backtester's requirement that simulations be retrievable,
