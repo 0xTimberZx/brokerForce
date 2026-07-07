@@ -69,3 +69,15 @@ export class PoolSourceNotImplementedError extends Error {
     this.name = "PoolSourceNotImplementedError";
   }
 }
+
+/** Thrown by real PoolSource implementations when the upstream API is
+ * unreachable, over its rate limit, timing out, or otherwise failing --
+ * anything that means "no data right now," as opposed to a bug. The pools
+ * route translates this into the same clear 503 "unavailable" response as
+ * a timeout, per spec5.md's API Requirements. */
+export class PoolSourceUnavailableError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "PoolSourceUnavailableError";
+  }
+}

@@ -3,7 +3,8 @@ import { query } from "@brokerforce/db";
 import type { PoolListResponse, PoolHistoryPoint } from "@brokerforce/types";
 import { findPair } from "./pairs.js";
 import { getPoolsForPair } from "../services/poolService.js";
-import { UnimplementedPoolSource, PoolSourceNotImplementedError } from "../services/poolSource.js";
+import { PoolSourceNotImplementedError, PoolSourceUnavailableError } from "../services/poolSource.js";
+import { GeckoTerminalPoolSource } from "../services/geckoTerminalPoolSource.js";
 
 // Per docs/API.md §6 and docs/specs/005-pool-examine/spec5.md.
 export const poolsRouter = Router();
@@ -12,7 +13,7 @@ export const poolsRouter = Router();
 // one line (and writing the class it instantiates), per
 // services/poolSource.ts's header comment. Not per-request since a real
 // source implementation may want to hold its own connection/client state.
-const poolSource = new UnimplementedPoolSource();
+const poolSource = new GeckoTerminalPoolSource();
 
 export function parseFilters(q: Record<string, unknown>) {
   return {
@@ -43,7 +44,11 @@ poolsRouter.get("/:assetA/:assetB/pools", async (req, res) => {
     // returning a generic 500 -- the frontend's PoolFetchErrorState renders
     // off this specific status/shape, distinct from the empty-result case
     // (which is a normal 200 with pools: []).
-    if (err instanceof PoolSourceNotImplementedError || (err instanceof Error && /timed out/.test(err.message))) {
+    if (
+      err instanceof PoolSourceNotImplementedError ||
+      err instanceof PoolSourceUnavailableError ||
+      (err instanceof Error && /timed out/.test(err.message))
+    ) {
       res.status(503).json({
         error: "pool data temporarily unavailable",
         reason: err instanceof Error ? err.message : "unknown error",
