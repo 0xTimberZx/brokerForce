@@ -124,7 +124,7 @@ export async function verifyAssetIdentity(
   };
 }
 
-
+function toDateKey(timestampMs: number): string {
   return new Date(timestampMs).toISOString().slice(0, 10);
 }
 

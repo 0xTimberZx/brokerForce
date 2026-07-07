@@ -20,7 +20,7 @@ describe("mean / stddev", () => {
 
   it("computes sample stddev correctly (ddof=1)", () => {
     // Known result: stddev of [2,4,4,4,5,5,7,9] (a textbook example) is 2.
-    expect(stddev([2, 4, 4, 4, 5, 5, 7, 9])).toBeCloseTo(2, 5);
+    expect(stddev([2, 4, 4, 4, 5, 5, 7, 9])).toBeCloseTo(2.138089935299395, 5); // ddof=1 (sample), not 2 (ddof=0 population)
   });
 });
 

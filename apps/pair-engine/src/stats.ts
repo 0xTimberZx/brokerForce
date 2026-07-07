@@ -28,8 +28,8 @@ export function pearsonCorrelation(x: number[], y: number[]): number {
   let varX = 0;
   let varY = 0;
   for (let i = 0; i < x.length; i++) {
-    const dx = x[i] - mx;
-    const dy = y[i] - my;
+    const dx = x[i]! - mx; // loop bounds guarantee validity
+    const dy = y[i]! - my;
     cov += dx * dy;
     varX += dx * dx;
     varY += dy * dy;
@@ -50,8 +50,8 @@ export function regressionSlope(x: number[], y: number[]): number {
   let cov = 0;
   let varX = 0;
   for (let i = 0; i < x.length; i++) {
-    cov += (x[i] - mx) * (y[i] - my);
-    varX += (x[i] - mx) ** 2;
+    cov += (x[i]! - mx) * (y[i]! - my); // loop bounds guarantee validity
+    varX += (x[i]! - mx) ** 2;
   }
   if (varX === 0) return 0;
   return cov / varX;
@@ -82,7 +82,7 @@ export function cointegrationScoreProxy(pricesA: number[], pricesB: number[]): n
   }
   const slope = regressionSlope(pricesB, pricesA);
   const intercept = mean(pricesA) - slope * mean(pricesB);
-  const residuals = pricesA.map((a, i) => a - (intercept + slope * pricesB[i]));
+  const residuals = pricesA.map((a, i) => a - (intercept + slope * pricesB[i]!)); // equal-length guaranteed
 
   const laggedResiduals = residuals.slice(0, -1);
   const currentResiduals = residuals.slice(1);
@@ -94,8 +94,8 @@ export function cointegrationScoreProxy(pricesA: number[], pricesB: number[]): n
 /** Backs pair_metrics.relative_strength. Cumulative log-return difference
  * over the window -- positive means asset A outperformed asset B. */
 export function relativeStrength(pricesA: number[], pricesB: number[]): number {
-  const returnA = Math.log(pricesA[pricesA.length - 1] / pricesA[0]);
-  const returnB = Math.log(pricesB[pricesB.length - 1] / pricesB[0]);
+  const returnA = Math.log(pricesA[pricesA.length - 1]! / pricesA[0]!); // non-empty guaranteed by contract
+  const returnB = Math.log(pricesB[pricesB.length - 1]! / pricesB[0]!);
   return returnA - returnB;
 }
 
@@ -117,12 +117,12 @@ export function marketCapRatioStability(
   bandPct = 10
 ): { ratioSeries: number[]; finalRatio: number; stability: number } {
   const supplyRatio = currentSupplyA / currentSupplyB;
-  const ratioSeries = pricesA.map((a, i) => (a / pricesB[i]) * supplyRatio);
-  const baseline = ratioSeries[0];
+  const ratioSeries = pricesA.map((a, i) => (a / pricesB[i]!) * supplyRatio); // equal-length guaranteed
+  const baseline = ratioSeries[0]!; // non-empty: pricesA.length >= 3 guaranteed by callers
   const inBand = ratioSeries.filter((r) => Math.abs(r / baseline - 1) <= bandPct / 100).length;
   return {
     ratioSeries,
-    finalRatio: ratioSeries[ratioSeries.length - 1],
+    finalRatio: ratioSeries[ratioSeries.length - 1]!, // same non-empty guarantee
     stability: inBand / ratioSeries.length,
   };
 }
@@ -134,8 +134,8 @@ export function rangeStabilityBands(
   pricesA: number[],
   pricesB: number[]
 ): { pct2: number; pct5: number; pct10: number; pct15: number } {
-  const ratios = pricesA.map((a, i) => a / pricesB[i]);
-  const baseline = ratios[0];
+  const ratios = pricesA.map((a, i) => a / pricesB[i]!); // equal-length guaranteed
+  const baseline = ratios[0]!; // non-empty: callers ensure pricesA.length >= 3
   const fractionInBand = (bandPct: number) =>
     ratios.filter((r) => Math.abs(r / baseline - 1) <= bandPct / 100).length / ratios.length;
   return {
@@ -162,8 +162,8 @@ export function timeInRangeAndRebalances(
   windowDays: number,
   bandPct = 5
 ): { avgTimeInRangeDays: number; estimatedRebalancesPerYear: number } {
-  const ratios = pricesA.map((a, i) => a / pricesB[i]);
-  const baseline = ratios[0];
+  const ratios = pricesA.map((a, i) => a / pricesB[i]!); // equal-length guaranteed
+  const baseline = ratios[0]!; // non-empty guaranteed
   const { streaks, exitCount } = computeRangeStreaks(ratios, (r) => Math.abs(r / baseline - 1) <= bandPct / 100);
 
   const avgTimeInRangeDays = streaks.length > 0 ? mean(streaks) : 0;

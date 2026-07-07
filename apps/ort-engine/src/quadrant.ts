@@ -40,6 +40,10 @@ function primeness(label: QuadrantLabel): number {
       return 1;
     case "avoid":
       return 0;
+    default: {
+      const _exhaustive: never = label;
+      throw new Error(`Unhandled QuadrantLabel: ${_exhaustive as string}`);
+    }
   }
 }
 

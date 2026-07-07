@@ -76,15 +76,20 @@ export function runBacktest(input: BacktestInput): BacktestResult {
     throw new Error("runBacktest requires pricesA, pricesB, and dates to be the same length");
   }
 
-  const ratios = pricesA.map((a, i) => a / pricesB[i]);
+  const ratios = pricesA.map((a, i) => a / pricesB[i]!); // equal-length guaranteed by the check above
+
   const { inRangeFlags, exitCount } = computeRangeStreaks(ratios, (r) => r >= rangeMin && r <= rangeMax);
 
   const timeInRangePct = inRangeFlags.filter(Boolean).length / inRangeFlags.length;
 
   const exitTimeline: BacktestExitEvent[] = [];
   for (let i = 1; i < inRangeFlags.length; i++) {
-    if (inRangeFlags[i - 1] && !inRangeFlags[i]) exitTimeline.push({ date: dates[i], type: "exit" });
-    if (!inRangeFlags[i - 1] && inRangeFlags[i]) exitTimeline.push({ date: dates[i], type: "re-entry" });
+    // All index accesses below are within [0, length) by loop bounds.
+    // dates[i] is string | undefined under noUncheckedIndexedAccess, but
+    // i < inRangeFlags.length === pricesA.length === dates.length (validated
+    // at the top of this function), so the ! assertion is safe here.
+    if (inRangeFlags[i - 1]! && !inRangeFlags[i]!) exitTimeline.push({ date: dates[i]!, type: "exit" });
+    if (!inRangeFlags[i - 1]! && inRangeFlags[i]!) exitTimeline.push({ date: dates[i]!, type: "re-entry" });
   }
 
   const rangeWidthPct = (rangeMax - rangeMin) / ((rangeMin + rangeMax) / 2);
@@ -95,7 +100,7 @@ export function runBacktest(input: BacktestInput): BacktestResult {
   let feesEarnedUsd = 0;
   for (let i = 0; i < pairVolume.length; i++) {
     if (inRangeFlags[i]) {
-      feesEarnedUsd += pairVolume[i] * feeTier * assumedPoolShareUsed;
+      feesEarnedUsd += pairVolume[i]! * feeTier * assumedPoolShareUsed; // i < pairVolume.length by loop bounds
     }
   }
 

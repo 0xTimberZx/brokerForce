@@ -127,7 +127,7 @@ async function computeForPairAndWindow(
   // Pair-level volatility, per Analytics.md §2: volatility of the
   // RELATIONSHIP (the spread between the two assets' returns), not either
   // asset's own individual volatility in isolation.
-  const deltaReturns = returnsA.map((ra, i) => ra - returnsB[i]);
+  const deltaReturns = returnsA.map((ra: number, i: number) => ra - returnsB[i]!);
   const historicalVolatility = stddev(deltaReturns);
 
   const cointegrationScore = cointegrationScoreProxy(closesA, closesB);

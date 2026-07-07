@@ -35,8 +35,8 @@ async function main() {
   let created = 0;
   for (let i = 0; i < assets.length; i++) {
     for (let j = i + 1; j < assets.length; j++) {
-      const a = assets[i];
-      const b = assets[j];
+      const a = assets[i]!; // loop bounds [0, length) guarantee validity
+      const b = assets[j]!; // loop bounds [i+1, length) guarantee validity
       const tier = defaultTierFor(a.class, b.class);
       await upsertPair(a.symbol, b.symbol, tier);
       created++;
