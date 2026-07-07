@@ -56,7 +56,7 @@ function computeVolumeFields(volumesA: number[], volumesB: number[]) {
   const proxy = pairVolumeProxy(volumesA, volumesB);
   const last = (n: number) => proxy.slice(-n);
 
-  const avgVolume24h = proxy.length >= 1 ? proxy[proxy.length - 1] : null;
+  const avgVolume24h = proxy[proxy.length - 1] ?? null;
   const avgVolume7d = proxy.length >= 7 ? mean(last(7)) : null;
   const avgVolume30d = proxy.length >= 30 ? mean(last(30)) : null;
 

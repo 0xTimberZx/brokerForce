@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import type { PoolWithDerived, PoolHistoryPoint } from "@brokerforce/types";
-import { fetchPoolsForPair, fetchPoolDetail, fetchPoolHistory } from "../api/client";
+import { fetchPoolsForPair, fetchPoolHistory } from "../api/client";
 import { PoolFilterBar, type PoolFiltersState } from "../components/PoolFilterBar";
 import { PoolListTable } from "../components/PoolListTable";
 import { PoolDetailPanel } from "../components/PoolDetailPanel";

@@ -14,6 +14,12 @@ export default tseslint.config(
       // narrow spots (e.g. parsing query params) — warn, don't fail the build,
       // until real implementations replace the stubs.
       "@typescript-eslint/no-explicit-any": "warn",
+      // Underscore-prefixed params mark intentionally unused arguments
+      // (e.g. interface implementations that ignore their input).
+      "@typescript-eslint/no-unused-vars": [
+        "error",
+        { argsIgnorePattern: "^_", varsIgnorePattern: "^_", caughtErrorsIgnorePattern: "^_" },
+      ],
     },
   }
 );

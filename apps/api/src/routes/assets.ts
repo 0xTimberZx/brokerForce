@@ -33,10 +33,11 @@ assetsRouter.get("/:symbol", async (req, res) => {
     [symbol]
   );
 
-  if (rows.length === 0) {
+  const row = rows[0];
+  if (!row) {
     res.status(404).json({ error: "asset not found", symbol });
     return;
   }
 
-  res.json(toAsset(rows[0]));
+  res.json(toAsset(row));
 });
