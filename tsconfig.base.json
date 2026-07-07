@@ -10,6 +10,10 @@
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
-    "noUncheckedIndexedAccess": true
+    "noUncheckedIndexedAccess": true,
+    "typeRoots": [
+      "/home/claude/.npm-global/lib/node_modules/ts-node/node_modules/@types",
+      "node_modules/@types"
+    ]
   }
 }

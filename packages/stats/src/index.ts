@@ -30,7 +30,8 @@ export function stddev(xs: number[]): number {
 export function logReturns(prices: number[]): number[] {
   const returns: number[] = [];
   for (let i = 1; i < prices.length; i++) {
-    returns.push(Math.log(prices[i] / prices[i - 1]));
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+    returns.push(Math.log(prices[i]! / prices[i - 1]!)); // loop bounds [1, length) guarantee both indices are valid
   }
   return returns;
 }
@@ -45,8 +46,11 @@ export function logReturns(prices: number[]): number[] {
  * day-by-day series.
  */
 export function impermanentLossEstimate(pricesA: number[], pricesB: number[]): number {
-  const startRatio = pricesA[0] / pricesB[0];
-  const endRatio = pricesA[pricesA.length - 1] / pricesB[pricesB.length - 1];
+  // ! assertions: both arrays are non-empty by contract (you can't compute
+  // IL over zero prices); callers must ensure this, same as they must ensure
+  // equal length. These are the only two accesses and both bounds are fixed.
+  const startRatio = pricesA[0]! / pricesB[0]!;
+  const endRatio = pricesA[pricesA.length - 1]! / pricesB[pricesB.length - 1]!;
   const r = endRatio / startRatio;
   return (2 * Math.sqrt(r)) / (1 + r) - 1;
 }
@@ -62,7 +66,10 @@ export function impermanentLossEstimate(pricesA: number[], pricesB: number[]): n
  * independently-drifting copies of it.
  */
 export function pairVolumeProxy(volumesA: number[], volumesB: number[]): number[] {
-  return volumesA.map((va, i) => Math.min(va, volumesB[i]));
+  // volumesB[i]! -- safe because caller guarantees equal-length arrays (same
+  // as every other paired-array function in this codebase); i is always
+  // a valid index into volumesB when it's a valid index into volumesA.
+  return volumesA.map((va, i) => Math.min(va, volumesB[i]!));
 }
 
 export interface RangeStreaksResult {
@@ -86,11 +93,13 @@ export function computeRangeStreaks(values: number[], isInRange: (v: number) => 
   let exitCount = 0;
   let currentStreak = 0;
   for (let i = 0; i < inRangeFlags.length; i++) {
-    if (inRangeFlags[i]) {
+    // inRangeFlags[i]! -- safe: loop bounds [0, length) guarantee validity.
+    if (inRangeFlags[i]!) {
       currentStreak++;
     } else {
       if (currentStreak > 0) streaks.push(currentStreak);
-      if (i > 0 && inRangeFlags[i - 1]) exitCount++;
+      // inRangeFlags[i - 1]! -- safe: i > 0 guard above ensures i-1 >= 0.
+      if (i > 0 && inRangeFlags[i - 1]!) exitCount++;
       currentStreak = 0;
     }
   }

@@ -20,12 +20,11 @@ type Window = 30 | 90 | 200;
 
 function rangeStabilityAvg(row: ActivePairMetricsRow): number | null {
   const bands = [row.rangeStability2pct, row.rangeStability5pct, row.rangeStability10pct, row.rangeStability15pct];
-  // All four bands come from the same computation in apps/pair-engine and
-  // should always be present or absent together -- if only some are null,
-  // that's a real data anomaly worth surfacing, not silently averaging
-  // around. Treat partial availability the same as full unavailability.
   if (bands.some((b) => b === null)) return null;
-  return bands.reduce((sum, b) => sum + b!, 0) / bands.length;
+  // TypeScript doesn't narrow array elements after .some(), so extract
+  // explicitly as non-null after the guard above confirms all are present.
+  const checkedBands = bands as number[];
+  return checkedBands.reduce((sum, b) => sum + b, 0) / checkedBands.length;
 }
 
 interface PairWindowResult {

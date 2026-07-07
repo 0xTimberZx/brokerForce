@@ -35,6 +35,8 @@ export function medianSplit(value: number, population: number[]): "high" | "low"
   if (population.length === 0) return "low"; // no peers -- can't claim "above" anything
   const sorted = [...population].sort((a, b) => a - b);
   const mid = Math.floor(sorted.length / 2);
-  const median = sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+  // All three accesses below are within [0, sorted.length) by construction:
+  // mid = floor(len/2), so mid-1 >= 0 when len is even, and mid < len always.
+  const median = sorted.length % 2 === 0 ? (sorted[mid - 1]! + sorted[mid]!) / 2 : sorted[mid]!;
   return value > median ? "high" : "low";
 }

@@ -6,7 +6,11 @@ describe("mean / stddev", () => {
     expect(mean([1, 2, 3, 4, 5])).toBe(3);
   });
   it("computes sample stddev correctly (ddof=1)", () => {
-    expect(stddev([2, 4, 4, 4, 5, 5, 7, 9])).toBeCloseTo(2, 5);
+    // [2,4,4,4,5,5,7,9] gives population stddev=2 (ddof=0) -- the Wikipedia
+    // example. Our implementation correctly uses ddof=1 (sample stddev), which
+    // gives 2.138..., not 2. The original test had the wrong expected value;
+    // the implementation is correct.
+    expect(stddev([2, 4, 4, 4, 5, 5, 7, 9])).toBeCloseTo(2.138089935299395, 5);
   });
 });
 
@@ -66,8 +70,8 @@ describe("computeRangeStreaks", () => {
     // generalized version doesn't change behavior for the case it replaced.
     const pricesA = [10, 10, 10, 15, 15];
     const pricesB = [5, 5, 5, 5, 5];
-    const ratios = pricesA.map((a, i) => a / pricesB[i]);
-    const baseline = ratios[0];
+    const ratios = pricesA.map((a, i) => a / pricesB[i]!); // pricesB is same length by construction
+    const baseline = ratios[0]!; // ratios is non-empty by construction
     const result = computeRangeStreaks(ratios, (r) => Math.abs(r / baseline - 1) <= 0.05);
     expect(result.streaks).toEqual([3]);
     expect(result.exitCount).toBe(1);
