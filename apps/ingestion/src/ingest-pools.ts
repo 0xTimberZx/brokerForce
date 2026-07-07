@@ -127,22 +127,27 @@ async function main() {
   let stored = 0;
   let promoted = 0;
   let sourceFailures = 0;
+  let unexpectedErrors = 0;
 
   for (const pair of pairs) {
     let raw: RawPoolData[];
     try {
       raw = await source.fetchPoolsForPair({ pairAssetA: pair.asset_a, pairAssetB: pair.asset_b });
     } catch (err) {
-      // One pair's source failure shouldn't kill the whole run -- log it,
-      // count it, and keep polling the rest. Anything other than the
-      // source's own "unavailable" signal is a real bug and should throw.
+      // One pair's failure shouldn't kill the whole run -- every other
+      // pair's snapshot still matters (the gate needs an unbroken daily
+      // record). "Unavailable" failures are expected operational noise;
+      // anything else is a real bug, so it's logged with its stack and the
+      // run still exits non-zero at the end to surface it.
       if (err instanceof PoolSourceUnavailableError) {
         sourceFailures++;
         console.warn(`  ${pair.asset_a}/${pair.asset_b}: source unavailable (${err.message}) -- skipping this run.`);
-        await sleep(PER_PAIR_DELAY_MS);
-        continue;
+      } else {
+        unexpectedErrors++;
+        console.error(`  ${pair.asset_a}/${pair.asset_b}: UNEXPECTED error -- skipping pair, will fail the run at the end:`, err);
       }
-      throw err;
+      await sleep(PER_PAIR_DELAY_MS);
+      continue;
     }
 
     // Tier-gated storage: everything for active pairs, gate candidates only
@@ -177,8 +182,14 @@ async function main() {
 
   console.log(
     `Done. Stored ${stored} pool snapshot(s), promoted ${promoted} pair(s), ` +
-      `${sourceFailures} source failure(s) skipped.`
+      `${sourceFailures} source failure(s) skipped, ${unexpectedErrors} unexpected error(s).`
   );
+  if (unexpectedErrors > 0) {
+    throw new Error(
+      `${unexpectedErrors} pair(s) hit unexpected (non-availability) errors -- see log lines above. ` +
+        `Snapshots for the other pairs were still stored.`
+    );
+  }
 }
 
 main()

@@ -109,6 +109,35 @@ describe("GeckoTerminalPoolSource", () => {
     expect(calledUrl).toContain("network=arbitrum");
   });
 
+  it("survives items with missing relationships (live API omits them sometimes)", async () => {
+    // Regression: the first automated ingestion run crashed with
+    // "Cannot read properties of undefined (reading 'data')" on a real
+    // search response whose item had no relationships.dex object.
+    const bare = {
+      id: "eth_0xbare",
+      attributes: { name: "WETH / USDC 0.3%", reserve_in_usd: "500000", volume_usd: { h24: "10000" } },
+      // no relationships at all
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ data: [bare] }) })
+    );
+    const source = new GeckoTerminalPoolSource();
+    const pools = await source.fetchPoolsForPair({ pairAssetA: "ETH", pairAssetB: "USDC" });
+    expect(pools).toEqual([
+      { dex: "unknown", chain: "unknown", feeTier: 0.003, tvl: 500_000, volume: 10_000, activeLiquidity: null },
+    ]);
+  });
+
+  it("requests dex and network relationships via the include param", async () => {
+    const fetchMock = mockFetchResponse([]);
+    vi.stubGlobal("fetch", fetchMock);
+    const source = new GeckoTerminalPoolSource();
+    await source.fetchPoolsForPair({ pairAssetA: "ETH", pairAssetB: "USDC" });
+    const calledUrl = fetchMock.mock.calls[0]?.[0] as string;
+    expect(calledUrl).toContain("include=dex%2Cnetwork");
+  });
+
   it("returns null tvl/volume rather than NaN for missing numbers", async () => {
     vi.stubGlobal("fetch", mockFetchResponse([gtPool("WETH / USDC 0.3%", { reserve: null, volumeH24: "" })]));
     const source = new GeckoTerminalPoolSource();

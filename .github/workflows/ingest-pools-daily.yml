@@ -50,6 +50,11 @@ jobs:
       - name: Run daily pipeline
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          # Optional but strongly recommended: a free CoinGecko "Demo" key.
+          # GitHub runners share egress IPs and the keyless public API
+          # rate-limits them aggressively -- the first run 429'd on nearly
+          # every candle call. https://www.coingecko.com/en/api/pricing
+          COINGECKO_API_KEY: ${{ secrets.COINGECKO_API_KEY }}
         run: |
           npm run migrate
           npm run ingest
