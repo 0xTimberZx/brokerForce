@@ -88,7 +88,11 @@ export async function fetchPriceHistory(
   windowDays: number
 ): Promise<PriceRow[]> {
   const rows = await query<{ date: string; close: string; volume: string }>(
-    `SELECT "timestamp"::date AS date, close, volume
+    // ::text matters: node-postgres parses a bare SQL DATE into a JS Date
+    // OBJECT, and compute-metrics' alignByDate keys a Map on this field --
+    // object keys never match by value, which silently yielded "0 aligned
+    // data points" for every pair in the first real ingestion run.
+    `SELECT "timestamp"::date::text AS date, close, volume
      FROM asset_price_history
      WHERE asset_symbol = $1
      ORDER BY "timestamp" DESC

@@ -11,3 +11,18 @@ export {
   PoolSourceUnavailableError,
 } from "./poolSource.js";
 export { GeckoTerminalPoolSource, parsePoolName, symbolsMatch } from "./geckoTerminalPoolSource.js";
+export { DexScreenerPoolSource, feeTierFromLabels } from "./dexScreenerPoolSource.js";
+export { FallbackPoolSource } from "./fallbackPoolSource.js";
+
+import type { PoolSource } from "./poolSource.js";
+import { GeckoTerminalPoolSource } from "./geckoTerminalPoolSource.js";
+import { DexScreenerPoolSource } from "./dexScreenerPoolSource.js";
+import { FallbackPoolSource } from "./fallbackPoolSource.js";
+
+/** The standard production source chain: DexScreener first (300 req/min --
+ * survives GitHub Actions' shared, rate-limit-saturated egress IPs, where
+ * GeckoTerminal's ~30/min public limit is typically already exhausted),
+ * GeckoTerminal second. */
+export function defaultPoolSource(): PoolSource {
+  return new FallbackPoolSource([new DexScreenerPoolSource(), new GeckoTerminalPoolSource()]);
+}
