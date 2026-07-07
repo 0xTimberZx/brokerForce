@@ -3,15 +3,18 @@ import { query } from "@brokerforce/db";
 import type { PoolListResponse, PoolHistoryPoint } from "@brokerforce/types";
 import { findPair } from "./pairs.js";
 import { getPoolsForPair } from "../services/poolService.js";
-import { PoolSourceNotImplementedError, PoolSourceUnavailableError } from "../services/poolSource.js";
-import { GeckoTerminalPoolSource } from "../services/geckoTerminalPoolSource.js";
+import {
+  PoolSourceNotImplementedError,
+  PoolSourceUnavailableError,
+  GeckoTerminalPoolSource,
+} from "@brokerforce/pool-sources";
 
 // Per docs/API.md §6 and docs/specs/005-pool-examine/spec5.md.
 export const poolsRouter = Router();
 
 // Single shared instance -- swapping in a real source means changing this
 // one line (and writing the class it instantiates), per
-// services/poolSource.ts's header comment. Not per-request since a real
+// @brokerforce/pool-sources' poolSource.ts header comment. Not per-request since a real
 // source implementation may want to hold its own connection/client state.
 const poolSource = new GeckoTerminalPoolSource();
 
