@@ -11,7 +11,7 @@
 
 import { query } from "@brokerforce/db";
 import type { PoolWithDerived } from "@brokerforce/types";
-import type { PoolSource, PoolQuery, RawPoolData } from "./poolSource.js";
+import type { PoolSource, PoolQuery, RawPoolData } from "@brokerforce/pool-sources";
 
 const LIVE_FETCH_TIMEOUT_MS = 5_000;
 const LIVE_FETCH_CACHE_TTL_MS = 10 * 60 * 1000;

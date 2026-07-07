@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@brokerforce/db": "*",
+    "@brokerforce/pool-sources": "*",
     "@brokerforce/stats": "*",
     "@brokerforce/types": "*",
     "dotenv": "^16.4.0",

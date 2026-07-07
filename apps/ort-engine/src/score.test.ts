@@ -89,10 +89,11 @@ describe("computeOrtScore", () => {
     const buggyScoreIfNotRenormalized = weightedSumWithoutMarketCap * 100; // divides by 1.0, the bug
 
     expect(result.score).toBeGreaterThan(buggyScoreIfNotRenormalized);
-    // And specifically: renormalized score = weightedSum / (1 - marketCapStability's weight)
+    // And specifically: renormalized score = weightedSum / (1 - marketCapStability's weight),
+    // then rounded to 2 decimals exactly as computeOrtScore presents it.
     const expectedRenormalized =
       (weightedSumWithoutMarketCap / (1 - ORT_WEIGHTS.marketCapStability)) * 100;
-    expect(result.score).toBeCloseTo(expectedRenormalized, 5);
+    expect(result.score).toBeCloseTo(Math.round(expectedRenormalized * 100) / 100, 5);
   });
 
   it("excludes unavailable components from componentScores entirely", () => {

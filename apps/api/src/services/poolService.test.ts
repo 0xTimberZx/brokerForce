@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { getPoolsForPair, __clearLiveFetchCacheForTests } from "./poolService.js";
-import type { PoolSource, PoolQuery, RawPoolData } from "./poolSource.js";
+import type { PoolSource, PoolQuery, RawPoolData } from "@brokerforce/pool-sources";
 
 function makeRawPool(overrides: Partial<RawPoolData> = {}): RawPoolData {
   return {
