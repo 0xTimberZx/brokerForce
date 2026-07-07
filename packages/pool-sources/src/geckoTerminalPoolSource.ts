@@ -26,16 +26,20 @@ const GECKOTERMINAL_BASE = "https://api.geckoterminal.com/api/v2";
 const REQUEST_TIMEOUT_MS = 5_000; // per PoolSource's contract / spec5.md
 const MAX_POOLS = 20; // search relevance degrades fast past the top page
 
+// relationships (and each relationship's data) are OPTIONAL: the first
+// automated ingestion run crashed on a live search response where
+// `relationships.dex` was absent -- the API does not guarantee these objects
+// on every item, so nothing below may assume them.
 interface GtPoolItem {
   id: string;
   attributes: {
     name: string;
     reserve_in_usd: string | null;
-    volume_usd: { h24: string | null };
+    volume_usd?: { h24: string | null };
   };
-  relationships: {
-    dex: { data: { id: string } | null };
-    network: { data: { id: string } | null };
+  relationships?: {
+    dex?: { data?: { id: string } | null };
+    network?: { data?: { id: string } | null };
   };
 }
 
@@ -77,6 +81,9 @@ export class GeckoTerminalPoolSource implements PoolSource {
     const params = new URLSearchParams({
       query: `${query.pairAssetA} ${query.pairAssetB}`,
       page: "1",
+      // Ask for the relationship objects explicitly -- without this the
+      // search response may omit them entirely (see GtPoolItem's comment).
+      include: "dex,network",
     });
     // GeckoTerminal's search accepts a network filter directly; dex/feeTier/
     // minTvl filtering happens downstream in poolService.applyFilters, which
@@ -114,8 +121,8 @@ export class GeckoTerminalPoolSource implements PoolSource {
       if (!isThisPair) continue;
 
       pools.push({
-        dex: item.relationships.dex.data?.id ?? "unknown",
-        chain: item.relationships.network.data?.id ?? "unknown",
+        dex: item.relationships?.dex?.data?.id ?? "unknown",
+        chain: item.relationships?.network?.data?.id ?? "unknown",
         feeTier,
         tvl: toNumberOrNull(item.attributes.reserve_in_usd),
         volume: toNumberOrNull(item.attributes.volume_usd?.h24),
