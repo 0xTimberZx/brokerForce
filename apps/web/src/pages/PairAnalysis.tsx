@@ -5,6 +5,7 @@ import { fetchPairDetail, fetchPairHistory, PairNotFoundError } from "../api/cli
 import { recordView } from "../store/recentlyViewedStore";
 import { PairSelector } from "../components/PairSelector";
 import { ORTPreviewChip } from "../components/ORTPreviewChip";
+import { AddToWatchlistButton } from "../components/AddToWatchlistButton";
 import { StatisticsSummaryGrid } from "../components/StatisticsSummaryGrid";
 import { RangeStabilityPanel } from "../components/RangeStabilityPanel";
 import { LiquidityActivityPanel } from "../components/LiquidityActivityPanel";
@@ -107,7 +108,14 @@ export function PairAnalysisPage() {
               ))}
             </div>
             {state.status === "loaded" && (
-              <ORTPreviewChip pairId={state.detail.pairId} window={window} />
+              <>
+                <ORTPreviewChip pairId={state.detail.pairId} window={window} />
+                <AddToWatchlistButton
+                  pairId={state.detail.pairId}
+                  assetA={state.detail.assetA}
+                  assetB={state.detail.assetB}
+                />
+              </>
             )}
           </div>
         </header>
