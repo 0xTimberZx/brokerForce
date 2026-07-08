@@ -4,6 +4,7 @@
 // now has three destinations and URLs are the navigation contract:
 //
 //   /                            -> 001 Dashboard (the landing point)
+//   /watchlist                   -> 007 Watchlists
 //   /pairs/:assetA/:assetB       -> 003 Pair Analysis
 //   /pairs/:assetA/:assetB/pools -> 005 Pool Explorer (pair context comes
 //                                   from the URL, per spec5.md's "navigating
@@ -11,6 +12,7 @@
 
 import { BrowserRouter, Routes, Route, Link, Navigate, useParams } from "react-router-dom";
 import { DashboardPage } from "./pages/Dashboard";
+import { WatchlistPage } from "./pages/Watchlist";
 import { PairAnalysisPage } from "./pages/PairAnalysis";
 import { PoolExplorerPage } from "./pages/PoolExplorer";
 
@@ -31,6 +33,9 @@ export default function App() {
             <Link to="/" className="font-body text-xs text-ink-muted hover:text-ink">
               Dashboard
             </Link>
+            <Link to="/watchlist" className="font-body text-xs text-ink-muted hover:text-ink">
+              Watchlist
+            </Link>
             <span className="font-body text-xs text-ink-muted/50 select-none" title="002 Search isn't built yet">
               Search — soon
             </span>
@@ -40,6 +45,7 @@ export default function App() {
           <div className="max-w-5xl mx-auto">
             <Routes>
               <Route path="/" element={<DashboardPage />} />
+              <Route path="/watchlist" element={<WatchlistPage />} />
               <Route path="/pairs/:assetA/:assetB" element={<PairAnalysisPage />} />
               <Route path="/pairs/:assetA/:assetB/pools" element={<PoolExplorerRoute />} />
               <Route path="*" element={<Navigate to="/" replace />} />

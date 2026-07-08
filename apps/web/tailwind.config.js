@@ -19,6 +19,14 @@ export default {
           muted: "#8FA39B", // muted teal-gray for labels/secondary text
         },
         signal: "#E8A33D", // warm amber -- reserved ONLY for the ORT score / decision signal
+        // Directional/semantic pair, desaturated to sit inside the teal-black
+        // family rather than shout. The ONE sanctioned exception to the
+        // "monochrome + single amber signal" rule: score movement is
+        // read-at-a-glance finance data where green-up/red-down is a genuine
+        // convention, not decoration. Introduced with 007 Watchlists' change
+        // indicator; use only for gain/loss direction, never as a second accent.
+        pos: "#5FA97C", // muted green -- score up / gain
+        neg: "#C96A5B", // muted rust -- score down / loss
         line: "#2A3A35", // hairline dividers, subtle not stark
       },
       fontFamily: {
