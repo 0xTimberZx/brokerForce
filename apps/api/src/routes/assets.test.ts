@@ -5,6 +5,7 @@ describe("toAsset", () => {
   it("converts numeric string fields to numbers", () => {
     const row: AssetDbRow = {
       symbol: "BTC",
+      name: "Bitcoin",
       class: "blue-chip",
       market_cap: "1500000000000",
       circulating_supply: "19800000",
@@ -12,6 +13,7 @@ describe("toAsset", () => {
       verification_status: "verified",
     };
     const asset = toAsset(row);
+    expect(asset.name).toBe("Bitcoin");
     expect(asset.marketCap).toBe(1500000000000);
     expect(asset.circulatingSupply).toBe(19800000);
     expect(asset.verificationStatus).toBe("verified");
@@ -24,6 +26,7 @@ describe("toAsset", () => {
     // misleading zero that looks like a real measurement.
     const row: AssetDbRow = {
       symbol: "SKY",
+      name: null,
       class: "stable",
       market_cap: null,
       circulating_supply: null,
@@ -31,6 +34,7 @@ describe("toAsset", () => {
       verification_status: "conflict",
     };
     const asset = toAsset(row);
+    expect(asset.name).toBeNull();
     expect(asset.marketCap).toBeNull();
     expect(asset.verificationStatus).toBe("conflict");
   });

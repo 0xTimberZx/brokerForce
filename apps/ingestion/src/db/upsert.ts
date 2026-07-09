@@ -9,22 +9,26 @@ export async function upsertAsset(
   verificationStatus: AssetVerificationStatus
 ): Promise<void> {
   await query(
-    `INSERT INTO assets (symbol, class, market_cap, circulating_supply, fully_diluted_value, verification_status, updated_at)
-     VALUES ($1, $2, $3, $4, $5, $6, now())
+    `INSERT INTO assets (symbol, class, name, market_cap, circulating_supply, fully_diluted_value, verification_status, updated_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, now())
      ON CONFLICT (symbol) DO UPDATE SET
        class = EXCLUDED.class,
        -- On conflict (verificationStatus = 'conflict'), deliberately do NOT
-       -- overwrite market_cap/circulating_supply/fully_diluted_value with
-       -- the unverified snapshot -- keep whatever was last verified instead
-       -- of replacing good data with data we just decided not to trust.
-       market_cap = CASE WHEN $6 = 'conflict' THEN assets.market_cap ELSE EXCLUDED.market_cap END,
-       circulating_supply = CASE WHEN $6 = 'conflict' THEN assets.circulating_supply ELSE EXCLUDED.circulating_supply END,
-       fully_diluted_value = CASE WHEN $6 = 'conflict' THEN assets.fully_diluted_value ELSE EXCLUDED.fully_diluted_value END,
+       -- overwrite name/market_cap/circulating_supply/fully_diluted_value
+       -- with the unverified snapshot -- keep whatever was last verified
+       -- instead of replacing good data with data we just decided not to
+       -- trust. COALESCE keeps an existing name if this run's snapshot has
+       -- none, so a good name is never nulled out by a later empty snapshot.
+       name = CASE WHEN $7 = 'conflict' THEN assets.name ELSE COALESCE(EXCLUDED.name, assets.name) END,
+       market_cap = CASE WHEN $7 = 'conflict' THEN assets.market_cap ELSE EXCLUDED.market_cap END,
+       circulating_supply = CASE WHEN $7 = 'conflict' THEN assets.circulating_supply ELSE EXCLUDED.circulating_supply END,
+       fully_diluted_value = CASE WHEN $7 = 'conflict' THEN assets.fully_diluted_value ELSE EXCLUDED.fully_diluted_value END,
        verification_status = EXCLUDED.verification_status,
        updated_at = now()`,
     [
       asset.symbol,
       asset.class,
+      snapshot?.name ?? null,
       snapshot?.marketCap ?? null,
       snapshot?.circulatingSupply ?? null,
       snapshot?.fullyDilutedValue ?? null,

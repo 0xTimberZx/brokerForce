@@ -1,9 +1,8 @@
 // 001 Dashboard -- the composition layer, per spec1.md: no new computation
 // lives here, only data already produced by 003/004 plus the client-side
-// recently-viewed and watchlist stores. QuickSearchBar still hands off to
-// 002 Search, which isn't built -- the header uses PairSelector as the
-// jump-to-pair entry point until then (same reasoning as PairSelector's own
-// header comment).
+// recently-viewed and watchlist stores. The header quick-search now hands
+// off to 002 Search (built), navigating to /search?q= -- search subsumes the
+// old two-asset jump, since "BTC ETH" resolves directly to that pair there.
 //
 // Personal sections (watchlist summary, recently viewed) appear only when
 // there's data for them; a first-time visitor with neither sees the intro
@@ -11,7 +10,7 @@
 
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { PairSelector } from "../components/PairSelector";
+import { SearchInput } from "../components/SearchInput";
 import { TopOpportunitiesPanel } from "../components/TopOpportunitiesPanel";
 import { WatchlistSummaryCard } from "../components/WatchlistSummaryCard";
 import { RecentlyViewedList } from "../components/RecentlyViewedList";
@@ -36,11 +35,7 @@ export function DashboardPage() {
           <h1 className="font-display text-xl text-ink">Dashboard</h1>
           <p className="font-body text-xs text-ink-muted">What's worth attention right now</p>
         </div>
-        <PairSelector
-          defaultAssetA=""
-          defaultAssetB=""
-          onSubmit={(a, b) => navigate(`/pairs/${a}/${b}`)}
-        />
+        <SearchInput onSubmit={(q) => navigate(`/search?q=${encodeURIComponent(q)}`)} />
       </header>
 
       <div className="grid md:grid-cols-2 gap-4 items-start">

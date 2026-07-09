@@ -4,6 +4,7 @@
 // now has three destinations and URLs are the navigation contract:
 //
 //   /                            -> 001 Dashboard (the landing point)
+//   /search                      -> 002 Search
 //   /watchlist                   -> 007 Watchlists
 //   /pairs/:assetA/:assetB       -> 003 Pair Analysis
 //   /pairs/:assetA/:assetB/pools -> 005 Pool Explorer (pair context comes
@@ -12,6 +13,7 @@
 
 import { BrowserRouter, Routes, Route, Link, Navigate, useParams } from "react-router-dom";
 import { DashboardPage } from "./pages/Dashboard";
+import { SearchPage } from "./pages/Search";
 import { WatchlistPage } from "./pages/Watchlist";
 import { PairAnalysisPage } from "./pages/PairAnalysis";
 import { PoolExplorerPage } from "./pages/PoolExplorer";
@@ -36,15 +38,16 @@ export default function App() {
             <Link to="/watchlist" className="font-body text-xs text-ink-muted hover:text-ink">
               Watchlist
             </Link>
-            <span className="font-body text-xs text-ink-muted/50 select-none" title="002 Search isn't built yet">
-              Search — soon
-            </span>
+            <Link to="/search" className="font-body text-xs text-ink-muted hover:text-ink">
+              Search
+            </Link>
           </div>
         </nav>
         <main className="p-6 md:p-10">
           <div className="max-w-5xl mx-auto">
             <Routes>
               <Route path="/" element={<DashboardPage />} />
+              <Route path="/search" element={<SearchPage />} />
               <Route path="/watchlist" element={<WatchlistPage />} />
               <Route path="/pairs/:assetA/:assetB" element={<PairAnalysisPage />} />
               <Route path="/pairs/:assetA/:assetB/pools" element={<PoolExplorerRoute />} />

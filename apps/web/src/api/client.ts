@@ -5,7 +5,7 @@
 // failure -- conflating any two of these would mislead the person using the
 // page about what's actually true.
 
-import type { PairDetailResponse, PairHistoryResponse, CanonicalWindow, OrtScore, OrtRankedPair, PoolListResponse, PoolWithDerived, PoolHistoryPoint } from "@brokerforce/types";
+import type { PairDetailResponse, PairHistoryResponse, CanonicalWindow, OrtScore, OrtRankedPair, PoolListResponse, PoolWithDerived, PoolHistoryPoint, SearchResponse } from "@brokerforce/types";
 
 // Defaults to the Vite dev proxy (vite.config.ts rewrites /api/* to apps/api
 // with no CORS needed, since the browser only ever talks to the Vite dev
@@ -80,6 +80,12 @@ export async function fetchOrtScoreSafe(pairId: string, window: CanonicalWindow)
  * is the expected state until pairs clear the active-tier gate. */
 export async function fetchOrtRanked(window: CanonicalWindow, limit: number): Promise<OrtRankedPair[]> {
   return getJson<OrtRankedPair[]>(`/pairs/ort?sort=desc&window=${window}&limit=${limit}`);
+}
+
+/** 002 Search: grouped assets + pairs (with inline 90d ORT) for a query.
+ * Pair scores are joined server-side, so no per-result lookups here. */
+export async function fetchSearch(q: string): Promise<SearchResponse> {
+  return getJson<SearchResponse>(`/search?q=${encodeURIComponent(q)}`);
 }
 
 export async function fetchPoolsForPair(

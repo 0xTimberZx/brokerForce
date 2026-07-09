@@ -39,6 +39,8 @@ export interface AssetSnapshot {
    * identity verification in ingest-assets.ts. Lowercase, per CoinGecko's
    * convention (e.g. "btc", not "BTC"). */
   symbol: string;
+  /** Human display name (e.g. "Bitcoin"), backing 002 Search's name match. */
+  name: string | null;
   marketCap: number | null;
   circulatingSupply: number | null;
   fullyDilutedValue: number | null;
@@ -91,6 +93,7 @@ export async function fetchCurrentSnapshots(
   type MarketsResponse = {
     id: string;
     symbol: string;
+    name: string | null;
     market_cap: number | null;
     circulating_supply: number | null;
     fully_diluted_valuation: number | null;
@@ -102,6 +105,7 @@ export async function fetchCurrentSnapshots(
     result.set(row.id, {
       coingeckoId: row.id,
       symbol: row.symbol,
+      name: row.name,
       marketCap: row.market_cap,
       circulatingSupply: row.circulating_supply,
       fullyDilutedValue: row.fully_diluted_valuation,
