@@ -25,6 +25,12 @@ concurrency:
 jobs:
   ingest:
     runs-on: ubuntu-latest
+    # A healthy run takes ~11 min (mostly ingest-pools' per-pair throttle
+    # across ~190 pairs plus CoinGecko rate-limit backoffs). 25 gives real
+    # headroom while still tripping on a genuine hang -- so a stuck run fails
+    # cleanly as "timed out" with retained logs, instead of the ambiguous
+    # 15-minute "cancelled" a runaway once produced with no diagnosable trace.
+    timeout-minutes: 25
     steps:
       - name: Require DATABASE_URL secret
         env:
