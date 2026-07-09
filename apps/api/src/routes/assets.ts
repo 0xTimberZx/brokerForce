@@ -7,6 +7,7 @@ export const assetsRouter = Router();
 
 export interface AssetDbRow {
   symbol: string;
+  name: string | null;
   class: AssetClass;
   market_cap: string | null;
   circulating_supply: string | null;
@@ -17,6 +18,7 @@ export interface AssetDbRow {
 export function toAsset(row: AssetDbRow): Asset {
   return {
     symbol: row.symbol,
+    name: row.name,
     class: row.class,
     marketCap: row.market_cap !== null ? Number(row.market_cap) : null,
     circulatingSupply: row.circulating_supply !== null ? Number(row.circulating_supply) : null,
@@ -28,7 +30,7 @@ export function toAsset(row: AssetDbRow): Asset {
 assetsRouter.get("/:symbol", async (req, res) => {
   const symbol = req.params.symbol.toUpperCase();
   const rows = await query<AssetDbRow>(
-    `SELECT symbol, class, market_cap, circulating_supply, fully_diluted_value, verification_status
+    `SELECT symbol, name, class, market_cap, circulating_supply, fully_diluted_value, verification_status
      FROM assets WHERE symbol = $1`,
     [symbol]
   );

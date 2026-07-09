@@ -27,6 +27,10 @@ export type PairTier = "active" | "limited" | "excluded-stable";
 
 export interface Asset {
   symbol: string;
+  // Human display name (e.g. "Bitcoin"), from CoinGecko via ingestion.
+  // Nullable: rows predating migration 003, or never yet ingested, have none
+  // -- 002 Search falls back to symbol-only matching for those.
+  name: string | null;
   class: AssetClass;
   // Nullable, not just typed optimistically as `number` -- a freshly
   // scrapped 'conflict' asset (apps/ingestion's identity verification
@@ -172,6 +176,37 @@ export interface OrtRankedPair {
   score: number;
   quadrantLabel: QuadrantLabel | null;
   confidence: "full" | "low";
+}
+
+// Per docs/API.md §4 / spec2.md -- GET /search grouped results.
+export interface AssetSearchResult {
+  symbol: string;
+  name: string | null;
+  class: AssetClass;
+}
+
+// A pair result carries its canonical 90d ORT score inline (joined
+// server-side, per spec2.md's no-N+1 requirement); score is null when the
+// pair hasn't cleared the active-tier gate and has no score yet.
+export interface PairSearchResult {
+  pairId: string;
+  assetA: string;
+  assetB: string;
+  tier: PairTier;
+  ortScore: number | null;
+  quadrantLabel: QuadrantLabel | null;
+}
+
+export interface SearchResponse {
+  query: string;
+  results: {
+    assets: AssetSearchResult[];
+    pairs: PairSearchResult[];
+    // Pools grouping is reserved by spec2.md ("where applicable") but not
+    // implemented: pool data is pair-scoped and live-fetched, so a free-text
+    // query doesn't map cleanly onto a specific pool. Always [] for now.
+    pools: never[];
+  };
 }
 
 export interface Pool {
