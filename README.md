@@ -64,3 +64,24 @@ npm run dev:web            # Web app via Vite — real 003 Pair Analysis page
 ## Contributing
 
 Every change should trace back to a spec in `specs/`. If you're about to write code and can't point to which spec it implements, that's the actual next step — not the code. See `docs/Product_Principles.md` §4 for the full Define → Design → Build discipline this project runs on.
+
+## License
+
+Copyright © 2026 Timber. All rights reserved except as granted below.
+
+BrokerForce is licensed under the **GNU Affero General Public License v3.0 or
+later** (AGPL-3.0-or-later) — see [`LICENSE`](LICENSE) for the full text.
+
+What this means in practice: you're free to use, study, and modify this code,
+**but** the AGPL's network clause (§13) requires that anyone who runs a modified
+version of BrokerForce as a hosted service — a website, an API, a SaaS — must
+make their complete corresponding source code available to that service's users.
+You cannot take this project, close it up, and run it as a competing product.
+The obligation to share applies to network use, not just redistribution, which
+ordinary permissive licenses don't cover.
+
+The data BrokerForce collects and produces (pool snapshots, tier-gate history,
+ORT scores) is a separate asset from the code and is **not** licensed for reuse
+or redistribution by this grant. For any use beyond the AGPL's terms — including
+a commercial license without the source-sharing requirement — contact the
+copyright holder.

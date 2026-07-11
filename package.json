@@ -3,6 +3,7 @@
   "private": true,
   "version": "0.0.0",
   "description": "BrokerForce — a protocol-agnostic Liquidity Intelligence Platform. See docs/Vision.md.",
+  "license": "AGPL-3.0-or-later",
   "workspaces": [
     "apps/*",
     "packages/*"
