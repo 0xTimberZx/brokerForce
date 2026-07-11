@@ -17,6 +17,7 @@ import { SearchPage } from "./pages/Search";
 import { WatchlistPage } from "./pages/Watchlist";
 import { PairAnalysisPage } from "./pages/PairAnalysis";
 import { PoolExplorerPage } from "./pages/PoolExplorer";
+import { SiteFooter } from "./components/SiteFooter";
 
 function PoolExplorerRoute() {
   const { assetA = "", assetB = "" } = useParams();
@@ -26,7 +27,7 @@ function PoolExplorerRoute() {
 export default function App() {
   return (
     <BrowserRouter>
-      <div className="min-h-screen bg-bg-deep">
+      <div className="min-h-screen bg-bg-deep flex flex-col">
         <nav className="border-b border-line">
           <div className="max-w-5xl mx-auto px-6 md:px-10 py-3 flex items-center gap-6">
             <Link to="/" className="font-display text-sm text-ink">
@@ -43,7 +44,7 @@ export default function App() {
             </Link>
           </div>
         </nav>
-        <main className="p-6 md:p-10">
+        <main className="p-6 md:p-10 flex-1">
           <div className="max-w-5xl mx-auto">
             <Routes>
               <Route path="/" element={<DashboardPage />} />
@@ -55,6 +56,7 @@ export default function App() {
             </Routes>
           </div>
         </main>
+        <SiteFooter />
       </div>
     </BrowserRouter>
   );
