@@ -78,8 +78,15 @@ export async function fetchOrtScoreSafe(pairId: string, window: CanonicalWindow)
  * reuses 004's ranked endpoint directly (spec1.md: same ranking Pair
  * Explorer would show, never a separately maintained list). An empty array
  * is the expected state until pairs clear the active-tier gate. */
-export async function fetchOrtRanked(window: CanonicalWindow, limit: number): Promise<OrtRankedPair[]> {
-  return getJson<OrtRankedPair[]>(`/pairs/ort?sort=desc&window=${window}&limit=${limit}`);
+export async function fetchOrtRanked(
+  window: CanonicalWindow,
+  limit: number,
+  // Quote-currency lens: "gold" narrows the ranking to gold-denominated pairs
+  // server-side (one side is XAUT/PAXG). Omitted/"usd" is the whole universe.
+  quote: "usd" | "gold" = "usd"
+): Promise<OrtRankedPair[]> {
+  const goldParam = quote === "gold" ? "&quote=gold" : "";
+  return getJson<OrtRankedPair[]>(`/pairs/ort?sort=desc&window=${window}&limit=${limit}${goldParam}`);
 }
 
 /** 002 Search: grouped assets + pairs (with inline 90d ORT) for a query.

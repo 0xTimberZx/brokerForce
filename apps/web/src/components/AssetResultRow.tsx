@@ -12,6 +12,7 @@ const CLASS_LABEL: Record<AssetSearchResult["class"], string> = {
   stable: "Stable",
   "growth-exotic": "Growth",
   degen: "Degen",
+  commodity: "Gold",
 };
 
 /**

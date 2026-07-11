@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import type { PoolWithDerived, PoolHistoryPoint } from "@brokerforce/types";
+import { isCommodityQuoted } from "@brokerforce/types";
 import { fetchPoolsForPair, fetchPoolHistory } from "../api/client";
 import { PoolFilterBar, type PoolFiltersState } from "../components/PoolFilterBar";
 import { PoolListTable } from "../components/PoolListTable";
@@ -70,12 +71,26 @@ export function PoolExplorerPage({ assetA, assetB, onSimulatePool }: PoolExplore
 
   return (
     <div className="space-y-6">
-      <div className="flex items-baseline justify-between">
-        <h2 className="font-display text-xl text-ink">
-          Pools <span className="text-ink-muted">·</span> {assetA}/{assetB}
+      <div className="flex items-baseline justify-between gap-3">
+        <h2 className="font-display text-xl text-ink flex items-baseline gap-2">
+          <span>
+            Pools <span className="text-ink-muted">·</span> {assetA}/{assetB}
+          </span>
+          {isCommodityQuoted(assetA, assetB) && (
+            // Gold-denominated pair: one side is tokenized gold (XAUT/PAXG).
+            // Pool TVL/volume below stay USD-denominated -- that's how DEX
+            // liquidity is measured on-chain -- so this is a context flag, not
+            // a unit switch, and the badge says so on hover.
+            <span
+              title="Gold-denominated pair (crypto priced in tokenized gold). Pool TVL and volume are still measured in USD, as reported on-chain."
+              className="font-mono text-[10px] uppercase tracking-wide text-signal border border-signal/40 px-2 py-0.5 self-center"
+            >
+              Gold-quoted
+            </span>
+          )}
         </h2>
         {pageState.status === "loaded" && (
-          <span className="font-mono text-xs text-ink-muted">
+          <span className="font-mono text-xs text-ink-muted whitespace-nowrap">
             {pageState.source === "live-fetch-cached" ? "cached · " : ""}
             {pageState.tier} tier
           </span>

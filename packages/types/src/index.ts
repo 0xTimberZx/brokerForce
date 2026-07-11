@@ -2,7 +2,24 @@
 // These mirror docs/Database.md's schema — if a field changes there, change it here too,
 // not independently in each app.
 
-export type AssetClass = "blue-chip" | "stable" | "growth-exotic" | "degen";
+export type AssetClass = "blue-chip" | "stable" | "growth-exotic" | "degen" | "commodity";
+
+// Tokenized-gold assets treated as quote/denominator currencies (crypto
+// priced in gold) -- the backing of the USD/Gold "quote lens" in Search and
+// the Dashboard rankings. Kept here as the single source of truth so the API
+// and every frontend surface agree on what counts as a gold-quoted pair
+// without each hardcoding its own list. These are asset SYMBOLS, matched
+// case-insensitively.
+export const COMMODITY_SYMBOLS = ["XAUT", "PAXG"] as const;
+
+/** True when either side of a pair is a tokenized-gold asset -- i.e. the pair
+ * is (or can be read as) crypto denominated in gold. Symbol-based on purpose:
+ * the frontend already has the pair's two symbols and shouldn't need an extra
+ * class lookup to answer this. */
+export function isCommodityQuoted(assetA: string, assetB: string): boolean {
+  const gold = new Set<string>(COMMODITY_SYMBOLS);
+  return gold.has(assetA.toUpperCase()) || gold.has(assetB.toUpperCase());
+}
 
 // Outcome of apps/ingestion's runtime identity verification (symbol-match
 // against the CoinGecko response). "conflict" means the most recent

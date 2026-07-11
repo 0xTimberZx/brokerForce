@@ -1,6 +1,9 @@
-// The 20 tracked assets, per docs/Glossary.md's Asset Class Tiers.
+// The 22 tracked assets, per docs/Glossary.md's Asset Class Tiers plus the
+// gold quote-asset feature.
 // (Glossary/Database.md say "~17" as a rough approximation -- the actual
-// count is 20: 4 blue-chip + 5 stable + 6 growth-exotic + 5 degen.)
+// count is 22: 4 blue-chip + 5 stable + 6 growth-exotic + 5 degen + 2
+// commodity -- the two tokenized-gold assets, XAUT/PAXG, added so crypto can
+// be denominated in gold, not just USD.)
 //
 // IMPORTANT -- coingeckoId values below are my best-confidence mapping from
 // training knowledge, NOT verified against a live API call (this environment
@@ -93,6 +96,17 @@ export const TRACKED_ASSETS: TrackedAsset[] = [
   { symbol: "WIF", class: "degen", coingeckoId: "dogwifcoin", verifyId: true },
   { symbol: "FLOKI", class: "degen", coingeckoId: "floki" },
   { symbol: "MEME", class: "degen", coingeckoId: "memecoin", verifyId: true },
+
+  // Commodity -- tokenized gold, tracked as quote/denominator assets so
+  // crypto can be priced in gold (BTC/XAUT, ETH/PAXG, ...). Both are ERC-20s
+  // with well-known contract addresses, so CoinGecko's platforms map will
+  // populate contract_addresses and token-identity verification applies to
+  // their pools like any other ERC-20 asset. verifyId is set for the same
+  // caution as other newer ids -- the runtime symbol check confirms XAUT/PAXG
+  // resolve to the intended tokenized-gold listings before any data is
+  // trusted.
+  { symbol: "XAUT", class: "commodity", coingeckoId: "tether-gold", verifyId: true },
+  { symbol: "PAXG", class: "commodity", coingeckoId: "pax-gold", verifyId: true },
 ];
 
 export function getAssetsNeedingVerification(): TrackedAsset[] {
