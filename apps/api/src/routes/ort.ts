@@ -91,6 +91,21 @@ ortRouter.get("/:pairId/ort/history", async (req, res) => {
   res.json(points);
 });
 
+/** The quote-currency lens as a SQL fragment for the ranked query. quote=gold
+ * restricts to gold-denominated pairs (one side is a commodity-class asset --
+ * XAUT/PAXG); anything else (usd, absent, unrecognized) yields no restriction,
+ * exactly preserving the original whole-universe ranking. Kept pure and
+ * exported so the lens rule is unit-tested without standing up the DB. */
+export function goldFilterClause(quote: unknown): string {
+  const goldOnly = String(quote ?? "").toLowerCase() === "gold";
+  return goldOnly
+    ? `AND EXISTS (
+         SELECT 1 FROM assets a
+         WHERE a.symbol IN (p.asset_a, p.asset_b) AND a.class = 'commodity'
+       )`
+    : "";
+}
+
 // GET /pairs/ort?sort=desc&window=90&limit= — note: no :pairId here, this is the ranked list.
 // Mounted separately since it doesn't share the /:pairId/ort path shape.
 export const ortRankedRouter = Router();
@@ -103,7 +118,9 @@ ortRankedRouter.get("/ort", async (req, res) => {
   // ort_scores only ever has rows for active-tier pairs in the first place
   // (apps/ort-engine/src/db.ts's fetchActivePairMetrics joins on tier =
   // 'active'), so no extra tier filter is needed here; there's nothing else
-  // in the table to accidentally include.
+  // in the table to accidentally include. The gold clause (quote lens) is the
+  // only optional restriction -- empty string when the lens is USD/absent.
+  const goldClause = goldFilterClause(req.query.quote);
   const rows = await query<{
     pair_id: string;
     asset_a: string;
@@ -116,6 +133,7 @@ ortRankedRouter.get("/ort", async (req, res) => {
      FROM ort_scores o
      JOIN pairs p ON p.id = o.pair_id
      WHERE o."window" = $1
+     ${goldClause}
      ORDER BY o.score ${sortDesc ? "DESC" : "ASC"}
      LIMIT $2`,
     [window, limit]

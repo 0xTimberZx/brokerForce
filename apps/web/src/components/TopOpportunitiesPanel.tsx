@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import type { OrtRankedPair } from "@brokerforce/types";
 import { fetchOrtRanked } from "../api/client";
+import { QuoteLensToggle, type QuoteLens } from "./QuoteLensToggle";
 
 type PanelState =
   | { status: "loading" }
@@ -18,20 +19,30 @@ type PanelState =
  */
 export function TopOpportunitiesPanel() {
   const [state, setState] = useState<PanelState>({ status: "loading" });
+  // Quote-currency lens: USD (whole universe) or Gold (crypto-vs-gold pairs).
+  const [lens, setLens] = useState<QuoteLens>("usd");
 
   useEffect(() => {
-    fetchOrtRanked(90, 10)
-      .then((pairs) => setState({ status: "loaded", pairs }))
+    let active = true;
+    setState({ status: "loading" });
+    fetchOrtRanked(90, 10, lens)
+      .then((pairs) => active && setState({ status: "loaded", pairs }))
       .catch((err) =>
-        setState({ status: "error", message: err instanceof Error ? err.message : "Unknown error" })
+        active && setState({ status: "error", message: err instanceof Error ? err.message : "Unknown error" })
       );
-  }, []);
+    return () => {
+      active = false;
+    };
+  }, [lens]);
 
   return (
     <section className="border border-line bg-bg-panel p-5">
-      <div className="flex items-baseline justify-between">
+      <div className="flex items-baseline justify-between gap-3">
         <h2 className="font-display text-sm text-ink">Top opportunities</h2>
-        <span className="font-mono text-[10px] uppercase tracking-widest text-ink-muted">90d ORT</span>
+        <div className="flex items-center gap-3">
+          <QuoteLensToggle value={lens} onChange={setLens} />
+          <span className="font-mono text-[10px] uppercase tracking-widest text-ink-muted">90d ORT</span>
+        </div>
       </div>
 
       {state.status === "loading" && (
@@ -42,7 +53,15 @@ export function TopOpportunitiesPanel() {
         <p className="font-mono text-xs text-ink-muted mt-4">Rankings unavailable: {state.message}</p>
       )}
 
-      {state.status === "loaded" && state.pairs.length === 0 && (
+      {state.status === "loaded" && state.pairs.length === 0 && lens === "gold" && (
+        <p className="font-body text-sm text-ink-muted mt-4 max-w-prose">
+          No gold-denominated pairs hold an ORT score yet. Gold pairs (crypto priced in XAUT or PAXG) score
+          the same way any pair does — once one clears the active-tier gate from the daily snapshots the
+          ingestion pipeline is accumulating now. Switch to USD to see the full ranking.
+        </p>
+      )}
+
+      {state.status === "loaded" && state.pairs.length === 0 && lens === "usd" && (
         <p className="font-body text-sm text-ink-muted mt-4 max-w-prose">
           No pairs hold an ORT score yet. Scores appear once a pair clears the active-tier gate — a real
           pool holding $50k TVL with a 7-day average volume over $10k, measured from daily snapshots the
