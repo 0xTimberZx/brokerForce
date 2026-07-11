@@ -41,6 +41,7 @@ import {
   ACTIVE_TVL_THRESHOLD_USD,
   type PoolGateEvidence,
 } from "./tier-gate.js";
+import { verifyPoolIdentity, type ContractRegistry } from "./token-identity.js";
 
 // GeckoTerminal's public tier allows ~30 calls/min; one search call per pair
 // at this spacing stays safely under it even with retries mixed in.
@@ -59,6 +60,21 @@ interface PairRow {
   asset_a: string;
   asset_b: string;
   tier: "active" | "limited";
+}
+
+/** Load the known-legit contract-address registry (assets.contract_addresses,
+ * populated from CoinGecko during asset ingestion) into the shape the
+ * identity verifier wants: symbol -> set of lowercased addresses. */
+async function loadContractRegistry(): Promise<ContractRegistry> {
+  const rows = await query<{ symbol: string; contract_addresses: string[] | null }>(
+    `SELECT symbol, contract_addresses FROM assets`
+  );
+  const registry: ContractRegistry = new Map();
+  for (const r of rows) {
+    const addrs = (r.contract_addresses ?? []).map((a) => a.toLowerCase());
+    registry.set(r.symbol.toUpperCase(), new Set(addrs));
+  }
+  return registry;
 }
 
 async function upsertPoolWithSnapshot(pairId: string, raw: RawPoolData): Promise<void> {
@@ -122,6 +138,12 @@ async function main() {
   // 300/min absorbs a 190-pair sweep with room to spare.
   const source: PoolSource = defaultPoolSource();
 
+  // Registry for token-identity verification (token-identity.ts). Loaded once
+  // per run; catches symbol-spoofed pools that clear the turnover filter.
+  const registry = await loadContractRegistry();
+  const withRegistry = [...registry.values()].filter((s) => s.size > 0).length;
+  console.log(`Loaded contract registry for ${withRegistry} asset(s) with known token addresses.`);
+
   // excluded-stable is filtered at the query -- never polled, never promoted.
   const pairs = await query<PairRow>(
     `SELECT id, asset_a, asset_b, tier FROM pairs WHERE tier IN ('active', 'limited') ORDER BY tier, asset_a, asset_b`
@@ -132,6 +154,7 @@ async function main() {
   let promoted = 0;
   let sourceFailures = 0;
   let unexpectedErrors = 0;
+  let identityRejected = 0;
 
   for (const pair of pairs) {
     let raw: RawPoolData[];
@@ -154,12 +177,29 @@ async function main() {
       continue;
     }
 
+    // Token-identity verification: drop pools proven to trade an impostor
+    // token (wrong contract address for this asset). Pools the check can't
+    // judge (no addresses, or a native-L1 asset with no registry) pass
+    // through to the turnover filter, which already guards those.
+    const identityChecked = raw.filter((p) => {
+      const verdict = verifyPoolIdentity(p, pair.asset_a, pair.asset_b, registry);
+      if (verdict === "rejected") {
+        identityRejected++;
+        console.warn(
+          `  rejected impostor pool ${pair.asset_a}/${pair.asset_b} (${p.dex}/${p.chain}): ` +
+            `token address not a known-legit contract for the pair -- TVL ${p.tvl}, volume ${p.volume}.`
+        );
+        return false;
+      }
+      return true;
+    });
+
     // Tier-gated storage: everything for active pairs, gate candidates only
     // (TVL already at/above the bar) for limited pairs -- see header.
     const toStore =
       pair.tier === "active"
-        ? raw
-        : raw.filter((p) => p.tvl !== null && p.tvl >= ACTIVE_TVL_THRESHOLD_USD);
+        ? identityChecked
+        : identityChecked.filter((p) => p.tvl !== null && p.tvl >= ACTIVE_TVL_THRESHOLD_USD);
 
     for (const rawPool of toStore) {
       await upsertPoolWithSnapshot(pair.id, rawPool);
@@ -186,6 +226,7 @@ async function main() {
 
   console.log(
     `Done. Stored ${stored} pool snapshot(s), promoted ${promoted} pair(s), ` +
+      `rejected ${identityRejected} impostor pool(s) by token identity, ` +
       `${sourceFailures} source failure(s) skipped, ${unexpectedErrors} unexpected error(s).`
   );
   if (unexpectedErrors > 0) {

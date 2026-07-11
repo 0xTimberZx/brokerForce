@@ -31,8 +31,8 @@ interface DsPair {
   chainId?: string;
   dexId?: string;
   labels?: string[];
-  baseToken?: { symbol?: string };
-  quoteToken?: { symbol?: string };
+  baseToken?: { symbol?: string; address?: string };
+  quoteToken?: { symbol?: string; address?: string };
   volume?: { h24?: number };
   liquidity?: { usd?: number };
 }
@@ -99,6 +99,9 @@ export class DexScreenerPoolSource implements PoolSource {
         tvl: toFiniteOrNull(pair.liquidity?.usd),
         volume: toFiniteOrNull(pair.volume?.h24),
         activeLiquidity: null, // not exposed by DexScreener -- see header
+        // Token contract addresses back ingestion's identity verification.
+        baseTokenAddress: pair.baseToken?.address?.toLowerCase(),
+        quoteTokenAddress: pair.quoteToken?.address?.toLowerCase(),
       });
       if (pools.length >= MAX_POOLS) break;
     }

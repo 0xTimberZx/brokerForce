@@ -32,6 +32,13 @@ export interface RawPoolData {
   swapCount7d?: number;
   uniqueLpCount?: number;
   activeLiquidityDistribution?: { priceTick: number; liquidity: number }[];
+  // On-chain contract addresses of the pool's two tokens, when the source
+  // provides them (DexScreener does). Used by ingestion's token-identity
+  // verification to reject symbol-spoofed pools whose token isn't the real
+  // asset. Omitted when the source doesn't expose them -> verification
+  // abstains and the turnover filter is the only guard.
+  baseTokenAddress?: string;
+  quoteTokenAddress?: string;
 }
 
 export interface PoolSource {
