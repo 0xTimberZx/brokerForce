@@ -5,7 +5,7 @@
 > you rely on it, especially because BrokerForce presents data people may act on
 > with real capital. Fill in every `[BRACKETED]` placeholder before publishing.
 
-**Last updated: [DATE]**
+**Last updated: 2026-07-11**
 
 ## Informational purposes only
 
@@ -58,4 +58,4 @@ warranty disclaimer and limitation of liability.
 
 ## Questions
 
-[CONTACT EMAIL OR CHANNEL]
+tawopetu@protonmail.com

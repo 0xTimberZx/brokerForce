@@ -1,13 +1,15 @@
 # Terms of Service
 
 > **Template, not legal advice.** This is a founder-drafted starting point for
-> BrokerForce, not counsel. Have a qualified attorney in your jurisdiction review
-> and adapt it before you rely on it — particularly the governing-law,
-> liability, and financial-disclaimer sections, and anything touching regulated
-> financial activity. Replace every `[BRACKETED]` placeholder before publishing.
+> BrokerForce, not counsel. Have a qualified attorney review and adapt it before
+> you rely on it — particularly the governing-law, liability, and
+> financial-disclaimer sections, and anything touching regulated financial
+> activity. Operator is set to a Wyoming LLC and governing law to Wyoming; the
+> one remaining placeholder, `[YOUR WYOMING LLC — REGISTERED NAME]`, needs your
+> LLC's exact registered name once it's formed.
 
-**Last updated: [DATE]**
-**Operator: [LEGAL NAME / ENTITY]** ("we," "us," "our")
+**Last updated: 2026-07-11**
+**Operator: [YOUR WYOMING LLC — REGISTERED NAME], a Wyoming limited liability company** ("we," "us," "our")
 
 These Terms of Service ("Terms") govern your access to and use of the
 BrokerForce website, application, and API (together, the "Service"). By
@@ -108,7 +110,7 @@ PROFITS, CAPITAL, DATA, OR GOODWILL, ARISING FROM OR RELATED TO YOUR USE OF, OR
 RELIANCE ON, THE SERVICE OR ITS DATA — INCLUDING ANY TRADING, LIQUIDITY, OR
 INVESTMENT DECISION — WHETHER BASED ON WARRANTY, CONTRACT, TORT, OR ANY OTHER
 LEGAL THEORY. OUR TOTAL LIABILITY FOR ANY CLAIM RELATING TO THE SERVICE WILL NOT
-EXCEED [AMOUNT, e.g. USD 100] OR THE AMOUNT YOU PAID US IN THE PRIOR 12 MONTHS,
+EXCEED USD 100 OR THE AMOUNT YOU PAID US IN THE PRIOR 12 MONTHS,
 WHICHEVER IS GREATER. SOME JURISDICTIONS DO NOT ALLOW CERTAIN LIMITATIONS, SO
 SOME OF THE ABOVE MAY NOT APPLY TO YOU.
 
@@ -126,10 +128,10 @@ continued use after that constitutes acceptance.
 
 ## 12. Governing law
 
-These Terms are governed by the laws of [JURISDICTION], without regard to
-conflict-of-laws rules. Any dispute will be resolved in the courts of
-[JURISDICTION], and you consent to that venue.
+These Terms are governed by the laws of the State of Wyoming, United States,
+without regard to conflict-of-laws rules. Any dispute will be resolved in the
+state or federal courts located in Wyoming, and you consent to that venue.
 
 ## 13. Contact
 
-[CONTACT EMAIL OR CHANNEL]
+tawopetu@protonmail.com
