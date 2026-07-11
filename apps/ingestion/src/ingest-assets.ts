@@ -17,6 +17,7 @@ import {
   fetchCurrentSnapshots,
   fetchSingleSnapshot,
   fetchDailyCandles,
+  fetchContractAddresses,
   type AssetSnapshot,
 } from "./sources/coingecko.js";
 import { upsertAsset, upsertDailyCandles } from "./db/upsert.js";
@@ -96,18 +97,32 @@ async function main() {
   for (const asset of TRACKED_ASSETS) {
     const primarySnapshot = snapshots.get(asset.coingeckoId);
     const { snapshot, status } = await verifyAssetIdentity(asset, primarySnapshot);
-    await upsertAsset(asset, snapshot, status);
 
     if (status === "conflict") {
+      // Scrapped: don't touch the stored registry either (pass undefined so
+      // upsert preserves it) -- an unverified run shouldn't rewrite the
+      // known-legit addresses any more than it rewrites market data.
+      await upsertAsset(asset, snapshot, status);
       conflicts.push(asset.symbol);
-      // Scrapped: no price history for this asset this run. Move on without
-      // attempting fetchDailyCandles -- there's no verified source id to
-      // fetch candles from.
+      // No price history for this asset this run -- there's no verified
+      // source id to fetch candles from.
       await sleep(PER_ASSET_DELAY_MS);
       continue;
     }
 
     const sourceId = snapshot!.coingeckoId; // verified -- either primary or fallback
+
+    // Known-legit contract addresses for pool identity verification. Fetched
+    // from the verified id; a failure here must not block the asset upsert or
+    // its candles -- pass undefined so the stored registry is preserved.
+    let contractAddresses: string[] | undefined;
+    try {
+      contractAddresses = await fetchContractAddresses(sourceId);
+    } catch (err) {
+      console.warn(`  -> failed to fetch contract addresses for ${asset.symbol} (keeping stored set):`, err);
+    }
+    await upsertAsset(asset, snapshot, status, contractAddresses);
+
     try {
       console.log(`Fetching daily candles for ${asset.symbol} (source: ${sourceId})...`);
       const candles = await fetchDailyCandles(sourceId);

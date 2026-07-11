@@ -131,6 +131,23 @@ export interface IdentityCheck {
   returnedName: string;
 }
 
+/** Known-legit token contract addresses for one asset, from CoinGecko's
+ * `platforms` map (chain -> address). Returns a de-duplicated, lowercased
+ * list across ALL chains; native-coin entries (empty address) are dropped.
+ * Empty for assets with no token contract (native L1s) -- callers treat that
+ * as "can't verify by address," not "no legit tokens exist". Backs pool
+ * token-identity verification (token-identity.ts). */
+export async function fetchContractAddresses(coingeckoId: string): Promise<string[]> {
+  const url =
+    `${COINGECKO_BASE}/coins/${coingeckoId}` +
+    `?localization=false&tickers=false&market_data=false&community_data=false&developer_data=false&sparkline=false`;
+  const data = await fetchJson<{ platforms?: Record<string, string | null> }>(url);
+  const addrs = Object.values(data.platforms ?? {})
+    .filter((a): a is string => typeof a === "string" && a.trim().length > 0)
+    .map((a) => a.trim().toLowerCase());
+  return [...new Set(addrs)];
+}
+
 /** Confirms a coingeckoId actually resolves to the token we think it does,
  * by checking the symbol CoinGecko returns against what we expect. This is
  * the real-time version of the manual verification flagged in
