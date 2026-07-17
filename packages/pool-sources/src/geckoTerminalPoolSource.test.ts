@@ -57,8 +57,17 @@ describe("symbolsMatch", () => {
     expect(symbolsMatch("BTC", "WBTC")).toBe(true);
   });
 
+  it("treats BNB Chain's BTCB (Binance-Peg BTC) as a form of BTC", () => {
+    // BTCB doesn't follow the W-prefix pattern, so it needs the explicit alias.
+    expect(symbolsMatch("BTCB", "BTC")).toBe(true);
+    expect(symbolsMatch("btcb", "btc")).toBe(true);
+    expect(symbolsMatch("BTC", "BTCB")).toBe(true);
+  });
+
   it("does not match different assets", () => {
     expect(symbolsMatch("USDT", "USDC")).toBe(false);
+    // BTCB is BTC's form only -- it must not match some other asset.
+    expect(symbolsMatch("BTCB", "BCH")).toBe(false);
   });
 });
 

@@ -59,12 +59,23 @@ export function parsePoolName(name: string): { symbols: string[]; feeTier: numbe
   return { symbols, feeTier };
 }
 
-/** Symbol equality that treats canonical wrapped forms as the same asset --
- * pairs are stored as "ETH"/"BTC" (Glossary.md asset symbols) but on-chain
- * pools trade the wrapped token, so GeckoTerminal reports "WETH"/"WBTC". */
+/** Non-"W"-prefixed pool symbols that are really a canonical asset. The W-rule
+ * in symbolsMatch already covers WBTC/WETH/WBNB/WSOL; this map is only for
+ * forms that don't follow that pattern -- e.g. BNB Chain's BTCB (Binance-Peg
+ * Bitcoin), a genuine form of BTC that would otherwise miss the match. */
+const SYMBOL_ALIASES: Record<string, string> = {
+  BTCB: "BTC",
+};
+
+/** Symbol equality that treats canonical wrapped/pegged forms as the same
+ * asset -- pairs are stored as "ETH"/"BTC" (Glossary.md asset symbols) but
+ * on-chain pools trade the wrapped token, so GeckoTerminal reports
+ * "WETH"/"WBTC"/"BTCB". */
 export function symbolsMatch(poolSymbol: string, assetSymbol: string): boolean {
-  const p = poolSymbol.toUpperCase();
-  const a = assetSymbol.toUpperCase();
+  const rawP = poolSymbol.toUpperCase();
+  const rawA = assetSymbol.toUpperCase();
+  const p = SYMBOL_ALIASES[rawP] ?? rawP;
+  const a = SYMBOL_ALIASES[rawA] ?? rawA;
   return p === a || p === `W${a}` || `W${p}` === a;
 }
 

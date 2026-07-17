@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { verifyPoolIdentity, type ContractRegistry } from "./token-identity.js";
+import { verifyPoolIdentity, NATIVE_ASSET_FORMS, type ContractRegistry } from "./token-identity.js";
 
 // Real-ish fixtures: LINK is an ERC-20 with a known address; USDC has many.
 const LINK = "0x514910771af9ca656af840dff83e8264ecf986ca";
@@ -60,5 +60,39 @@ describe("verifyPoolIdentity", () => {
     expect(
       verifyPoolIdentity({ baseTokenAddress: LINK, quoteTokenAddress: SCAM }, "LINK", "DOGE", registry())
     ).toBe("unverifiable");
+  });
+});
+
+describe("NATIVE_ASSET_FORMS (wrapped/pegged forms of native coins)", () => {
+  const WBTC = NATIVE_ASSET_FORMS.BTC![0]!; // Wrapped BTC (Ethereum)
+  const BTCB = NATIVE_ASSET_FORMS.BTC![1]!; // Binance-Peg BTC (BNB Chain)
+
+  // The registry as ingest-pools builds it: BTC seeded with its wrapped forms.
+  function seededRegistry(): ContractRegistry {
+    return new Map([
+      ["BTC", new Set([WBTC, BTCB])],
+      ["USDC", new Set([USDC_ETH])],
+    ]);
+  }
+
+  it("lists both WBTC and BTCB for BTC", () => {
+    expect(NATIVE_ASSET_FORMS.BTC).toHaveLength(2);
+    expect(WBTC).toMatch(/^0x[0-9a-f]{40}$/);
+    expect(BTCB).toMatch(/^0x[0-9a-f]{40}$/);
+  });
+
+  it("verifies a wrapped-BTC pool once the forms are seeded -- no longer abstains", () => {
+    expect(
+      verifyPoolIdentity({ baseTokenAddress: WBTC, quoteTokenAddress: USDC_ETH }, "BTC", "USDC", seededRegistry())
+    ).toBe("verified");
+    expect(
+      verifyPoolIdentity({ baseTokenAddress: BTCB, quoteTokenAddress: USDC_ETH }, "BTC", "USDC", seededRegistry())
+    ).toBe("verified");
+  });
+
+  it("still rejects an impostor 'BTC' whose address is neither known form", () => {
+    expect(
+      verifyPoolIdentity({ baseTokenAddress: SCAM, quoteTokenAddress: USDC_ETH }, "BTC", "USDC", seededRegistry())
+    ).toBe("rejected");
   });
 });

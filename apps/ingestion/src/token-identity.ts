@@ -21,6 +21,28 @@
 
 export type IdentityVerdict = "verified" | "rejected" | "unverifiable";
 
+/**
+ * Canonical on-chain forms of native assets that have no CoinGecko `platforms`
+ * contract of their own. A native coin like BTC can't be verified by contract
+ * address -- it isn't an ERC-20 -- so its identity check would always abstain,
+ * leaving impostor "BTC" pools guarded only by the turnover filter. But BTC
+ * *does* trade on DEXes as wrapped/pegged tokens with real, well-known
+ * addresses (WBTC on Ethereum, BTCB on BNB Chain). Seeding those into the
+ * registry lets pools of the wrapped forms verify as the native asset.
+ *
+ * Addresses are lowercased and chain-agnostic (matching ANY known-legit
+ * address is the signal -- see migration 004's header and verifyPoolIdentity).
+ * These are stable, high-value canonical contracts; hardcoded here rather than
+ * sourced from CoinGecko because they belong to *other* coin listings
+ * (wrapped-bitcoin, binance-bitcoin), not BTC's own.
+ */
+export const NATIVE_ASSET_FORMS: Record<string, string[]> = {
+  BTC: [
+    "0x2260fac5e5542a773aa44fbcfedf7c193bc2c599", // WBTC -- Wrapped BTC (Ethereum)
+    "0x7130d2a12b9bcbfae4f2634d864a1ee1ce3ead9c", // BTCB -- Binance-Peg BTC (BNB Chain)
+  ],
+};
+
 export interface PoolAddresses {
   baseTokenAddress?: string;
   quoteTokenAddress?: string;

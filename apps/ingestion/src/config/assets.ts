@@ -1,9 +1,9 @@
-// The 22 tracked assets, per docs/Glossary.md's Asset Class Tiers plus the
+// The 30 tracked assets, per docs/Glossary.md's Asset Class Tiers plus the
 // gold quote-asset feature.
 // (Glossary/Database.md say "~17" as a rough approximation -- the actual
-// count is 22: 4 blue-chip + 5 stable + 6 growth-exotic + 5 degen + 2
-// commodity -- the two tokenized-gold assets, XAUT/PAXG, added so crypto can
-// be denominated in gold, not just USD.)
+// count is 30: 5 blue-chip + 5 stable + 13 growth-exotic + 5 degen + 2
+// commodity. The two tokenized-gold assets, XAUT/PAXG, were added so crypto
+// can be denominated in gold, not just USD.)
 //
 // IMPORTANT -- coingeckoId values below are my best-confidence mapping from
 // training knowledge, NOT verified against a live API call (this environment
@@ -64,10 +64,16 @@ export interface TrackedAsset {
 
 export const TRACKED_ASSETS: TrackedAsset[] = [
   // Blue chip
+  // BTC is native (no token contract of its own); on-chain it trades as its
+  // wrapped/pegged forms WBTC and BTCB. Those forms are handled in two places
+  // -- symbol matching (packages/pool-sources symbolsMatch) and the identity
+  // registry seed (apps/ingestion/src/token-identity.ts NATIVE_ASSET_FORMS) --
+  // so wrapped-BTC pools resolve to BTC and can be verified by contract.
   { symbol: "BTC", class: "blue-chip", coingeckoId: "bitcoin" },
   { symbol: "ETH", class: "blue-chip", coingeckoId: "ethereum" },
   { symbol: "BNB", class: "blue-chip", coingeckoId: "binancecoin" },
   { symbol: "SOL", class: "blue-chip", coingeckoId: "solana" },
+  { symbol: "XRP", class: "blue-chip", coingeckoId: "ripple" },
 
   // Stable
   { symbol: "USDC", class: "stable", coingeckoId: "usd-coin" },
@@ -89,6 +95,15 @@ export const TRACKED_ASSETS: TrackedAsset[] = [
   { symbol: "AAVE", class: "growth-exotic", coingeckoId: "aave" },
   { symbol: "AVAX", class: "growth-exotic", coingeckoId: "avalanche-2" },
   { symbol: "ARB", class: "growth-exotic", coingeckoId: "arbitrum" },
+  { symbol: "UNI", class: "growth-exotic", coingeckoId: "uniswap" },
+  { symbol: "ADA", class: "growth-exotic", coingeckoId: "cardano" },
+  { symbol: "BCH", class: "growth-exotic", coingeckoId: "bitcoin-cash" },
+  { symbol: "TRX", class: "growth-exotic", coingeckoId: "tron" },
+  { symbol: "ZEC", class: "growth-exotic", coingeckoId: "zcash" },
+  // Exchange tokens -- large caps whose liquidity is mostly on their home
+  // venue, tracked here for completeness of the pair universe.
+  { symbol: "OKB", class: "growth-exotic", coingeckoId: "okb" },
+  { symbol: "CRO", class: "growth-exotic", coingeckoId: "crypto-com-chain" },
 
   // Degen
   { symbol: "PEPE", class: "degen", coingeckoId: "pepe" },
