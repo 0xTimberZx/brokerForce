@@ -70,30 +70,49 @@ export function TopOpportunitiesPanel() {
       )}
 
       {state.status === "loaded" && state.pairs.length > 0 && (
-        <ol className="mt-4 divide-y divide-line">
-          {state.pairs.map((p, i) => (
-            <li key={p.pairId}>
-              <Link
-                to={`/pairs/${p.assetA}/${p.assetB}`}
-                className="flex items-center gap-4 py-2.5 group"
-              >
-                <span className="font-mono text-xs text-ink-muted w-5 text-right tabular-nums">{i + 1}</span>
-                <span className="font-body text-sm text-ink group-hover:underline underline-offset-4">
-                  {p.assetA}/{p.assetB}
-                </span>
-                <span className="ml-auto flex items-center gap-3 font-mono text-sm">
-                  {p.quadrantLabel && (
-                    <span className="text-[10px] uppercase tracking-wide text-ink-muted">{p.quadrantLabel}</span>
-                  )}
-                  {p.confidence === "low" && (
-                    <span className="text-[10px] italic text-ink-muted">low conf.</span>
-                  )}
-                  <span className="text-signal font-medium tabular-nums">{p.score.toFixed(0)}</span>
-                </span>
-              </Link>
-            </li>
-          ))}
-        </ol>
+        <>
+          {/* Column headers -- labelled so a first-time visitor can read the
+              list without guessing what each figure means. Same flex columns
+              as the rows below so labels sit over their values. */}
+          <div className="mt-4 flex items-center gap-4 pb-2 border-b border-line font-mono text-[10px] uppercase tracking-wide text-ink-muted">
+            <span className="w-5 text-right">#</span>
+            <span>Pair</span>
+            <span className="ml-auto flex items-center gap-3">
+              <span>Signal</span>
+              <span className="text-signal">ORT</span>
+            </span>
+          </div>
+          <ol className="divide-y divide-line">
+            {state.pairs.map((p, i) => (
+              <li key={p.pairId}>
+                <Link
+                  to={`/pairs/${p.assetA}/${p.assetB}`}
+                  className="flex items-center gap-4 py-2.5 group"
+                >
+                  <span className="font-mono text-xs text-ink-muted w-5 text-right tabular-nums">{i + 1}</span>
+                  <span className="font-body text-sm text-ink group-hover:underline underline-offset-4">
+                    {p.assetA}/{p.assetB}
+                  </span>
+                  <span className="ml-auto flex items-center gap-3 font-mono text-sm">
+                    {p.quadrantLabel && (
+                      <span className="text-[10px] uppercase tracking-wide text-ink-muted">{p.quadrantLabel}</span>
+                    )}
+                    {p.confidence === "low" && (
+                      <span className="text-[10px] italic text-ink-muted">low conf.</span>
+                    )}
+                    <span className="text-signal font-medium tabular-nums">{p.score.toFixed(0)}</span>
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ol>
+          {/* Plain-language key -- what the two figures mean, for newcomers. */}
+          <p className="mt-4 pt-3 border-t border-line font-body text-[11px] leading-relaxed text-ink-muted">
+            <span className="text-ink">ORT</span> — a 0–100 score of how attractive a pair is for providing
+            liquidity (higher is better). <span className="text-ink">Signal</span> — a plain read: prime
+            (best) · active · quiet · avoid.
+          </p>
+        </>
       )}
     </section>
   );
