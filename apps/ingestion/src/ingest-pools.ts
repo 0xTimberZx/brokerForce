@@ -41,7 +41,7 @@ import {
   ACTIVE_TVL_THRESHOLD_USD,
   type PoolGateEvidence,
 } from "./tier-gate.js";
-import { verifyPoolIdentity, type ContractRegistry } from "./token-identity.js";
+import { verifyPoolIdentity, NATIVE_ASSET_FORMS, type ContractRegistry } from "./token-identity.js";
 
 // GeckoTerminal's public tier allows ~30 calls/min; one search call per pair
 // at this spacing stays safely under it even with retries mixed in.
@@ -73,6 +73,15 @@ async function loadContractRegistry(): Promise<ContractRegistry> {
   for (const r of rows) {
     const addrs = (r.contract_addresses ?? []).map((a) => a.toLowerCase());
     registry.set(r.symbol.toUpperCase(), new Set(addrs));
+  }
+  // Seed the canonical wrapped/pegged forms of native assets (WBTC/BTCB for
+  // BTC) -- these have no CoinGecko contract on BTC's own listing, so without
+  // this a wrapped-BTC pool would only ever be "unverifiable". Merged (not
+  // overwritten) so any addresses already stored for the symbol are kept.
+  for (const [symbol, forms] of Object.entries(NATIVE_ASSET_FORMS)) {
+    const set = registry.get(symbol.toUpperCase()) ?? new Set<string>();
+    for (const addr of forms) set.add(addr.toLowerCase());
+    registry.set(symbol.toUpperCase(), set);
   }
   return registry;
 }
