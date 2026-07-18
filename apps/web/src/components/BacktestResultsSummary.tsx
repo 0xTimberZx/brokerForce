@@ -1,0 +1,81 @@
+import type { BacktestResult } from "@brokerforce/types";
+
+// Per spec6.md's Results summary: net outcome is the HEADLINE -- fees and IL
+// presented together under it, never fees alone. The caveat block at the
+// bottom is not boilerplate: the backtest service's fee figure rides on an
+// assumed pool share (apps/api/src/services/backtest.ts's header), and
+// presenting it without that disclosure would be dishonest precision.
+
+interface BacktestResultsSummaryProps {
+  result: BacktestResult;
+  /** Server note when the run covered less history than requested. */
+  note?: string;
+}
+
+export function fmtUsd(v: number): string {
+  const sign = v < 0 ? "−" : v > 0 ? "+" : "";
+  return `${sign}$${Math.abs(v).toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+}
+
+export function fmtPct(v: number, digits = 1): string {
+  const sign = v < 0 ? "−" : v > 0 ? "+" : "";
+  return `${sign}${Math.abs(v * 100).toFixed(digits)}%`;
+}
+
+export function BacktestResultsSummary({ result, note }: BacktestResultsSummaryProps) {
+  const pnlPositive = result.netPnl >= 0;
+
+  return (
+    <section className="border border-line bg-bg-panel p-5 space-y-4">
+      <div className="flex items-baseline justify-between gap-3">
+        <h2 className="font-display text-sm text-ink">Result</h2>
+        <span className="font-mono text-[10px] uppercase tracking-widest text-ink-muted">
+          {result.dataGranularity} closes
+        </span>
+      </div>
+
+      {/* Headline: the net outcome. */}
+      <div>
+        <div className="font-body text-[11px] uppercase tracking-wide text-ink-muted">
+          Net P&amp;L — fees minus impermanent loss
+        </div>
+        <div className={`font-mono text-3xl font-medium tabular-nums ${pnlPositive ? "text-pos" : "text-neg"}`}>
+          {fmtUsd(result.netPnl)}
+          <span className="text-lg ml-2">({fmtPct(result.netPnlPct)})</span>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pt-1 border-t border-line">
+        <div className="pt-3">
+          <div className="font-body text-[11px] uppercase tracking-wide text-ink-muted">Fees earned (est.)</div>
+          <div className="font-mono text-lg text-ink tabular-nums">{fmtUsd(result.feesEarned)}</div>
+        </div>
+        <div className="pt-3">
+          <div className="font-body text-[11px] uppercase tracking-wide text-ink-muted">Impermanent loss</div>
+          <div className="font-mono text-lg text-ink tabular-nums">{fmtPct(result.ilEstimate, 2)}</div>
+        </div>
+        <div className="pt-3">
+          <div className="font-body text-[11px] uppercase tracking-wide text-ink-muted">Time in range</div>
+          <div className="font-mono text-lg text-ink tabular-nums">{(result.timeInRangePct * 100).toFixed(1)}%</div>
+        </div>
+        <div className="pt-3">
+          <div className="font-body text-[11px] uppercase tracking-wide text-ink-muted">Range exits</div>
+          <div className="font-mono text-lg text-ink tabular-nums">{result.exitCount}</div>
+        </div>
+      </div>
+
+      {note && (
+        <p className="font-body text-xs text-ink border border-line bg-bg-deep px-3 py-2">
+          {note}
+        </p>
+      )}
+
+      <p className="font-body text-[11px] text-ink-muted leading-relaxed">
+        Time in range, exits, and IL are computed directly from real daily price history. Fee earnings
+        assume a {(result.assumedPoolShareUsed * 100).toFixed(1)}% share of pool volume (an estimate, not
+        v3 tick math) on a ${result.positionSizeUsd.toLocaleString()} position — treat fees and net P&amp;L
+        as directional for comparing ranges, not as a dollar prediction.
+      </p>
+    </section>
+  );
+}

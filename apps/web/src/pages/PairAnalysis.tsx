@@ -161,7 +161,11 @@ export function PairAnalysisPage() {
 
             <PairReturnChart history={state.history} assetA={state.detail.assetA} assetB={state.detail.assetB} />
 
-            <FeeILPreview metrics={state.detail.metrics} />
+            <FeeILPreview
+              metrics={state.detail.metrics}
+              assetA={state.detail.assetA}
+              assetB={state.detail.assetB}
+            />
           </>
         )}
       </div>
