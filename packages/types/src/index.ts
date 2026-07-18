@@ -226,6 +226,56 @@ export interface SearchResponse {
   };
 }
 
+// Per specs/008-range-suggestions/spec8.md -- one fitted preset. Every
+// preset carries the evidence it was fitted from (measured TIR + annualized
+// exits); the API/UI must never strip these (acceptance criterion).
+export interface RangePreset {
+  name: "conservative" | "balanced" | "aggressive";
+  targetTir: number; // the reliability target the fit aimed for (fraction)
+  widthPct: number; // fitted ±% around the window-start ratio
+  timeInRangePct: number; // measured historical containment (fraction)
+  exitsPerYear: number;
+}
+
+export interface RangeSuggestionsResponse {
+  pairId: string;
+  presets: RangePreset[];
+  basis: {
+    days: number; // days of aligned history the fit ran on
+    granularity: "daily" | "hourly";
+  };
+  // The historical-fit framing, server-supplied so wording can't drift
+  // between consumers [spec8 6a].
+  caption: string;
+}
+
+// 422-shaped decline body for pairs under the 45-day minimum [spec8 7a].
+export interface RangeSuggestionsDecline {
+  error: string;
+  daysAvailable: number;
+  daysRequired: number;
+}
+
+// Per spec8.md's asset detail page: one "opportunities featuring X" row.
+export interface AssetOpportunity {
+  pairId: string;
+  assetA: string;
+  assetB: string;
+  ortScore: number;
+  quadrantLabel: QuadrantLabel | null;
+  // Null when the pair's history is under the suggestion minimum -- the row
+  // still renders (the ORT ranking stands on its own), just without a preset.
+  balanced: RangePreset | null;
+}
+
+export interface AssetOpportunitiesResponse {
+  asset: Asset;
+  // Ranked by canonical 90d ORT, capped server-side. Empty when none of the
+  // asset's pairs hold a score yet -- an honest state the UI must design for.
+  opportunities: AssetOpportunity[];
+  caption: string;
+}
+
 export interface Pool {
   id: string;
   pairId: string;

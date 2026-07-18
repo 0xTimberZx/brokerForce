@@ -5,7 +5,7 @@
 // failure -- conflating any two of these would mislead the person using the
 // page about what's actually true.
 
-import type { PairDetailResponse, PairHistoryResponse, CanonicalWindow, OrtScore, OrtRankedPair, PoolListResponse, PoolWithDerived, PoolHistoryPoint, SearchResponse, BacktestRequest, BacktestResult } from "@brokerforce/types";
+import type { PairDetailResponse, PairHistoryResponse, CanonicalWindow, OrtScore, OrtRankedPair, PoolListResponse, PoolWithDerived, PoolHistoryPoint, SearchResponse, BacktestRequest, BacktestResult, RangeSuggestionsResponse, AssetOpportunitiesResponse } from "@brokerforce/types";
 
 // Defaults to the Vite dev proxy (vite.config.ts rewrites /api/* to apps/api
 // with no CORS needed, since the browser only ever talks to the Vite dev
@@ -146,6 +146,39 @@ export type BacktestRunOutcome =
   | { status: "ok"; data: BacktestResult & { note?: string } }
   | { status: "rejected"; reason: string }
   | { status: "error"; reason: string };
+
+// 008 Range Suggestions. "declined" is the pair-too-young state (under the
+// 45-day minimum) with the server's real day counts, so the panel renders
+// "N of 45 days" -- an expected state, distinct from an actual failure.
+export type RangeSuggestionsOutcome =
+  | { status: "ok"; data: RangeSuggestionsResponse }
+  | { status: "declined"; daysAvailable: number; daysRequired: number }
+  | { status: "error"; reason: string };
+
+export async function fetchRangeSuggestions(pairId: string): Promise<RangeSuggestionsOutcome> {
+  try {
+    const res = await fetch(`${API_URL}/pairs/${pairId}/range-suggestions`);
+    const body: unknown = await res.json().catch(() => null);
+    if (res.ok) return { status: "ok", data: body as RangeSuggestionsResponse };
+    if (res.status === 422) {
+      const d = body as { daysAvailable?: number; daysRequired?: number } | null;
+      return { status: "declined", daysAvailable: d?.daysAvailable ?? 0, daysRequired: d?.daysRequired ?? 45 };
+    }
+    const e = body as { error?: string } | null;
+    return { status: "error", reason: e?.error ?? `HTTP ${res.status}` };
+  } catch (err) {
+    return { status: "error", reason: err instanceof Error ? err.message : "unknown network error" };
+  }
+}
+
+/** 008's asset detail page: profile + ORT-ranked opportunities featuring the
+ * asset. Null on 404 (unknown symbol) -- the page renders not-found. */
+export async function fetchAssetOpportunities(symbol: string): Promise<AssetOpportunitiesResponse | null> {
+  const res = await fetch(`${API_URL}/assets/${encodeURIComponent(symbol)}/opportunities`);
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`API request failed (${res.status}): /assets/${symbol}/opportunities`);
+  return (await res.json()) as AssetOpportunitiesResponse;
+}
 
 export async function runBacktest(req: BacktestRequest): Promise<BacktestRunOutcome> {
   try {

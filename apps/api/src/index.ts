@@ -6,6 +6,7 @@ import { ortRouter, ortRankedRouter } from "./routes/ort.js";
 import { searchRouter } from "./routes/search.js";
 import { poolsRouter, poolDetailRouter } from "./routes/pools.js";
 import { backtestRouter } from "./routes/backtest.js";
+import { rangeSuggestionsRouter, assetOpportunitiesRouter } from "./routes/rangeSuggestions.js";
 
 const app = express();
 app.use(express.json());
@@ -14,6 +15,7 @@ app.use(express.json());
 // No /watchlists/* router exists on purpose: watchlists are a client-side local-storage
 // module per docs/specs/007-watchlists/spec7.md, not a server endpoint, while
 // docs/Architecture.md §5's local-storage-only auth decision holds.
+app.use("/assets", assetOpportunitiesRouter); // /assets/:symbol/opportunities (008)
 app.use("/assets", assetsRouter);
 // ORDER MATTERS among the /pairs routers: pairsRouter's generic
 // /:assetA/:assetB pattern also matches /<pairId>/ort (assetB = "ort") and
@@ -24,6 +26,7 @@ app.use("/assets", assetsRouter);
 // must be given the first chance to match.
 app.use("/pairs", ortRankedRouter); // /pairs/ort — ranked list
 app.use("/pairs", ortRouter); // /pairs/:pairId/ort, /pairs/:pairId/ort/history
+app.use("/pairs", rangeSuggestionsRouter); // /pairs/:pairId/range-suggestions (008) — same ordering rule
 app.use("/pairs", poolsRouter); // /pairs/:assetA/:assetB/pools
 app.use("/pairs", pairsRouter); // /pairs/:assetA/:assetB (+ /history) — generic, matches last
 app.use("/search", searchRouter);

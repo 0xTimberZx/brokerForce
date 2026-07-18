@@ -11,6 +11,7 @@ import { RangeStabilityPanel } from "../components/RangeStabilityPanel";
 import { LiquidityActivityPanel } from "../components/LiquidityActivityPanel";
 import { PairReturnChart } from "../components/PairReturnChart";
 import { FeeILPreview } from "../components/FeeILPreview";
+import { SuggestedRangesPanel } from "../components/SuggestedRangesPanel";
 
 const WINDOWS: CanonicalWindow[] = [30, 90, 200];
 
@@ -158,6 +159,14 @@ export function PairAnalysisPage() {
               <RangeStabilityPanel metrics={state.detail.metrics} />
               <LiquidityActivityPanel metrics={state.detail.metrics} />
             </div>
+
+            {/* 008: fitted presets, adjacent to the range-stability data that
+                backs them (same containment methodology -- spec8.md). */}
+            <SuggestedRangesPanel
+              pairId={state.detail.pairId}
+              assetA={state.detail.assetA}
+              assetB={state.detail.assetB}
+            />
 
             <PairReturnChart history={state.history} assetA={state.detail.assetA} assetB={state.detail.assetB} />
 

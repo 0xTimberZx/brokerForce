@@ -29,6 +29,9 @@ interface SimulationSetupFormProps {
   initialAssetB?: string;
   /** Fee tier carried from 005 Pool Explorer, when arriving from a pool. */
   initialFeeTier?: number;
+  /** ±width carried from a 008 range-suggestion preset link -- the
+   * "Backtest this range" hand-off pre-fills exactly the fitted width. */
+  initialWidthPct?: number;
   /** After the first scenario runs, pair + period lock so added scenarios
    * compare against the same baseline (spec6.md's comparison criterion --
    * only range/fee/size may differ between scenarios). */
@@ -44,6 +47,7 @@ export function SimulationSetupForm({
   initialAssetA = "",
   initialAssetB = "",
   initialFeeTier,
+  initialWidthPct,
   pairPeriodLocked,
   running,
   onRun,
@@ -57,7 +61,9 @@ export function SimulationSetupForm({
     initialFeeTier && initialFeeTier > 0 ? initialFeeTier : 0.003
   );
   const [rangeMode, setRangeMode] = useState<"width" | "bounds">("width");
-  const [widthPct, setWidthPct] = useState("10");
+  const [widthPct, setWidthPct] = useState(
+    initialWidthPct && initialWidthPct > 0 ? String(initialWidthPct) : "10"
+  );
   const [rangeMin, setRangeMin] = useState("");
   const [rangeMax, setRangeMax] = useState("");
   const [positionSize, setPositionSize] = useState("10000");

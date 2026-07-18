@@ -45,6 +45,9 @@ export function BacktestPage() {
   const initialAssetB = (params.get("assetB") ?? "").toUpperCase();
   const feeTierParam = Number(params.get("feeTier"));
   const initialFeeTier = Number.isFinite(feeTierParam) && feeTierParam > 0 ? feeTierParam : undefined;
+  // ±width carried from a 008 preset's "Backtest this range" link.
+  const widthParam = Number(params.get("widthPct"));
+  const initialWidthPct = Number.isFinite(widthParam) && widthParam > 0 ? widthParam : undefined;
 
   const [locked, setLocked] = useState<LockedBaseline | null>(null);
   const [scenarios, setScenarios] = useState<(Scenario & { note?: string })[]>([]);
@@ -201,6 +204,7 @@ export function BacktestPage() {
         initialAssetA={locked?.assetA ?? initialAssetA}
         initialAssetB={locked?.assetB ?? initialAssetB}
         initialFeeTier={initialFeeTier}
+        initialWidthPct={initialWidthPct}
         pairPeriodLocked={locked !== null}
         running={running}
         onRun={handleRun}
