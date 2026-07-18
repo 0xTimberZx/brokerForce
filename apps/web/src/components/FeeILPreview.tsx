@@ -1,10 +1,15 @@
+import { Link } from "react-router-dom";
 import type { PairMetrics } from "@brokerforce/types";
 
 interface FeeILPreviewProps {
   metrics: PairMetrics | null;
+  // The pair symbols carry into the Backtester as pre-fill (spec6.md's 003
+  // entry point) -- the reason this component now needs to know them.
+  assetA: string;
+  assetB: string;
 }
 
-export function FeeILPreview({ metrics }: FeeILPreviewProps) {
+export function FeeILPreview({ metrics, assetA, assetB }: FeeILPreviewProps) {
   const il = metrics?.ilEstimate ?? null;
 
   return (
@@ -22,18 +27,15 @@ export function FeeILPreview({ metrics }: FeeILPreviewProps) {
         </div>
       </div>
 
-      {/* Disabled, not a broken/missing link -- 006 Backtester doesn't exist
-          as a real route yet (apps/web has no router, no /backtest page).
-          A button that looks clickable but goes nowhere would be worse than
-          one that's honestly disabled with a reason. */}
-      <button
-        disabled
-        title="006 Backtester isn't built yet"
-        className="w-full font-body text-sm px-4 py-2 border border-line text-ink-muted
-                   cursor-not-allowed opacity-60"
+      {/* The old honestly-disabled button, finally enabled: 006 Backtester
+          exists as a real route now. Pair context rides the query string. */}
+      <Link
+        to={`/backtest?assetA=${encodeURIComponent(assetA)}&assetB=${encodeURIComponent(assetB)}`}
+        className="block w-full text-center font-body text-sm px-4 py-2 border border-signal text-signal
+                   hover:bg-signal hover:text-bg-deep transition-colors"
       >
-        Run full backtest — coming soon
-      </button>
+        Run full backtest →
+      </Link>
 
       <p className="font-body text-[11px] text-ink-muted mt-2">
         IL estimate is the real, textbook constant-product-AMM formula — a single end-of-window point estimate,

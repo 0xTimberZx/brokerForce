@@ -5,7 +5,7 @@
 // failure -- conflating any two of these would mislead the person using the
 // page about what's actually true.
 
-import type { PairDetailResponse, PairHistoryResponse, CanonicalWindow, OrtScore, OrtRankedPair, PoolListResponse, PoolWithDerived, PoolHistoryPoint, SearchResponse } from "@brokerforce/types";
+import type { PairDetailResponse, PairHistoryResponse, CanonicalWindow, OrtScore, OrtRankedPair, PoolListResponse, PoolWithDerived, PoolHistoryPoint, SearchResponse, BacktestRequest, BacktestResult } from "@brokerforce/types";
 
 // Defaults to the Vite dev proxy (vite.config.ts rewrites /api/* to apps/api
 // with no CORS needed, since the browser only ever talks to the Vite dev
@@ -133,5 +133,34 @@ export async function fetchPoolHistory(poolId: string): Promise<PoolHistoryPoint
     return await res.json() as PoolHistoryPoint[];
   } catch {
     return [];
+  }
+}
+
+// 006 Backtester. The server may attach a `note` when the requested period
+// exceeded available history and the run proceeded on the shorter real
+// coverage (spec6.md's no-silent-extrapolation criterion) -- surfaced, not
+// swallowed. "rejected" carries the server's own reason verbatim (bad
+// inputs, unknown pair, or a 422 for insufficient history) so the page can
+// show WHY a run didn't happen instead of a generic failure.
+export type BacktestRunOutcome =
+  | { status: "ok"; data: BacktestResult & { note?: string } }
+  | { status: "rejected"; reason: string }
+  | { status: "error"; reason: string };
+
+export async function runBacktest(req: BacktestRequest): Promise<BacktestRunOutcome> {
+  try {
+    const res = await fetch(`${API_URL}/backtest`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(req),
+    });
+    const body: unknown = await res.json().catch(() => null);
+    if (res.ok) {
+      return { status: "ok", data: body as BacktestResult & { note?: string } };
+    }
+    const errBody = body as { reason?: string; error?: string } | null;
+    return { status: "rejected", reason: errBody?.reason ?? errBody?.error ?? `HTTP ${res.status}` };
+  } catch (err) {
+    return { status: "error", reason: err instanceof Error ? err.message : "unknown network error" };
   }
 }
