@@ -25,12 +25,14 @@ concurrency:
 jobs:
   ingest:
     runs-on: ubuntu-latest
-    # A healthy run takes ~11 min (mostly ingest-pools' per-pair throttle
-    # across ~190 pairs plus CoinGecko rate-limit backoffs). 25 gives real
-    # headroom while still tripping on a genuine hang -- so a stuck run fails
-    # cleanly as "timed out" with retained logs, instead of the ambiguous
-    # 15-minute "cancelled" a runaway once produced with no diagnosable trace.
-    timeout-minutes: 25
+    # A healthy run now takes ~26-27 min: the pair universe grew to ~435
+    # (ingest-pools' 2.5s per-pair throttle alone is ~18 min) and the hourly
+    # price top-up added ~2-3 min of per-asset calls. The old 25 was sized
+    # for ~190 pairs and got outgrown -- the first post-hourly run was
+    # cancelled at exactly 25:00 with its tail (pool snapshots for late
+    # pairs, compute-ort) unfinished. 40 restores real headroom while still
+    # tripping on a genuine hang, same reasoning as before, new arithmetic.
+    timeout-minutes: 40
     steps:
       - name: Require DATABASE_URL secret
         env:
