@@ -221,6 +221,7 @@ export function BacktestPage() {
             periodEnd={latestResult.periodEnd}
             exitTimeline={latestResult.exitTimeline}
             timeInRangePct={latestResult.timeInRangePct}
+            granularity={latestResult.dataGranularity}
           />
         </>
       )}

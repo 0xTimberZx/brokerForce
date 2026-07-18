@@ -14,6 +14,9 @@ interface TimeInRangeTimelineProps {
   periodEnd: string;
   exitTimeline: BacktestExitEvent[];
   timeInRangePct: number;
+  /** The resolution this simulation actually ran on -- the label must state
+   * the real one, never assume daily (Database.md §2's upgrade landed). */
+  granularity: "daily" | "hourly";
 }
 
 interface Segment {
@@ -65,7 +68,7 @@ export function TimeInRangeTimeline(props: TimeInRangeTimelineProps) {
       <div className="flex items-baseline justify-between gap-3">
         <h2 className="font-display text-sm text-ink">Time in range</h2>
         <span className="font-mono text-[10px] uppercase tracking-widest text-ink-muted">
-          based on daily closes
+          based on {props.granularity} closes
         </span>
       </div>
 

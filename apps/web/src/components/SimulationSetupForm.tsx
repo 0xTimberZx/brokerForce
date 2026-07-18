@@ -255,7 +255,8 @@ export function SimulationSetupForm({
 
       <p className="font-body text-[11px] text-ink-muted">
         A ±width range centers on the price ratio at the start of the period (the simulated entry).
-        Simulations run on daily closing prices.
+        Simulations run on hourly closes where the data covers the period (roughly the last 90 days),
+        daily closes otherwise — the result states which was used.
       </p>
     </form>
   );

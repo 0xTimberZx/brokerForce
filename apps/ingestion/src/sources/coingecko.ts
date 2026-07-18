@@ -170,6 +170,63 @@ function toDateKey(timestampMs: number): string {
   return new Date(timestampMs).toISOString().slice(0, 10);
 }
 
+/** Truncates a ms timestamp to its UTC hour as an ISO string. Hourly points
+ * from /market_chart aren't guaranteed to land exactly on :00 -- keying by
+ * truncated hour makes rows align exactly ACROSS assets (the backtest route
+ * joins the two assets' series on timestamp), and dedupes the trailing
+ * partial-hour point market_chart appends. */
+function toHourKey(timestampMs: number): string {
+  const d = new Date(timestampMs);
+  d.setUTCMinutes(0, 0, 0);
+  return d.toISOString();
+}
+
+export interface HourlyPoint {
+  /** ISO timestamp truncated to the UTC hour. */
+  timestamp: string;
+  close: number;
+  /** ROLLING 24h volume as reported at that hour -- NOT per-hour volume.
+   * Null when the volume series had no entry for the hour. */
+  volume24h: number | null;
+}
+
+// /market_chart granularity is automatic on the free tier: days 2-90 ->
+// hourly points. Below 2 it switches to 5-minutely, above 90 to daily --
+// both are the wrong shape for asset_price_hourly, so clamp hard.
+const HOURLY_MIN_DAYS = 2;
+export const HOURLY_MAX_DAYS = 90; // free-tier hourly horizon; also the backfill depth
+
+/** Fetches hourly price + rolling-24h-volume points for one asset. ONE
+ * request per asset. Callers pass days=HOURLY_MAX_DAYS for the first-run
+ * backfill and a small number (2) for the daily top-up -- see
+ * ingest-assets.ts. Same call-spacing etiquette as fetchDailyCandles. */
+export async function fetchHourlyPrices(
+  coingeckoId: string,
+  lookbackDays: number
+): Promise<HourlyPoint[]> {
+  const days = Math.min(HOURLY_MAX_DAYS, Math.max(HOURLY_MIN_DAYS, lookbackDays));
+
+  const url = `${COINGECKO_BASE}/coins/${coingeckoId}/market_chart?vs_currency=usd&days=${days}`;
+  const chart = await fetchJson<{ prices: [number, number][]; total_volumes: [number, number][] }>(url);
+
+  const volumeByHour = new Map<string, number>();
+  for (const [ts, volume] of chart.total_volumes ?? []) {
+    volumeByHour.set(toHourKey(ts), volume);
+  }
+
+  const pointByHour = new Map<string, HourlyPoint>();
+  for (const [ts, price] of chart.prices ?? []) {
+    const hour = toHourKey(ts);
+    pointByHour.set(hour, {
+      timestamp: hour,
+      close: price,
+      volume24h: volumeByHour.get(hour) ?? null,
+    });
+  }
+
+  return [...pointByHour.values()].sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+}
+
 /** Fetches daily price + volume for one asset and shapes them into
  * DailyCandle rows. ONE request per asset (down from two) -- /market_chart
  * returns both series together, and for windows over 90 days both are daily
