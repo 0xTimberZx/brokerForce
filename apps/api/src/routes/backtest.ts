@@ -2,6 +2,7 @@ import { Router } from "express";
 import { query } from "@brokerforce/db";
 import type { BacktestRequest, BacktestResult, BacktestExitEvent } from "@brokerforce/types";
 import { runBacktest } from "../services/backtest.js";
+import { hourlyCoversPeriod, perHourVolume } from "../services/granularity.js";
 
 // Per docs/API.md §7 and docs/specs/006-backtests/spec6.md.
 export const backtestRouter = Router();
@@ -26,6 +27,38 @@ async function fetchPriceHistoryForPeriod(
   );
 }
 
+interface HourlyRow {
+  ts: string;
+  close: string;
+  volume_24h: string | null;
+}
+
+// The hourly leg of Database.md §2's granularity upgrade. Timestamps are
+// already hour-truncated at ingestion (sources/coingecko.ts's toHourKey), so
+// the two assets' series align on exact timestamp equality, same as the
+// daily path aligns on date.
+async function fetchHourlyForPeriod(
+  symbol: string,
+  periodStart: string,
+  periodEnd: string
+): Promise<HourlyRow[]> {
+  return query<HourlyRow>(
+    `SELECT "timestamp"::text AS ts, close, volume_24h
+     FROM asset_price_hourly
+     WHERE asset_symbol = $1 AND "timestamp" >= $2 AND "timestamp" <= ($3::date + 1)
+     ORDER BY "timestamp" ASC`,
+    [symbol, periodStart, periodEnd]
+  );
+}
+
+async function earliestHourly(symbol: string): Promise<string | null> {
+  const rows = await query<{ ts: string | null }>(
+    `SELECT min("timestamp")::text AS ts FROM asset_price_hourly WHERE asset_symbol = $1`,
+    [symbol]
+  );
+  return rows[0]?.ts ?? null;
+}
+
 backtestRouter.post("/", async (req, res) => {
   const body = req.body as BacktestRequest;
 
@@ -48,26 +81,70 @@ backtestRouter.post("/", async (req, res) => {
     return;
   }
 
-  const [historyA, historyB] = await Promise.all([
-    fetchPriceHistoryForPeriod(pair.asset_a, body.periodStart, body.periodEnd),
-    fetchPriceHistoryForPeriod(pair.asset_b, body.periodStart, body.periodEnd),
+  // Granularity selection (Database.md §2's upgrade): hourly when the hourly
+  // series genuinely covers the period for BOTH assets, daily otherwise --
+  // one resolution per simulation, disclosed in the response, never mixed.
+  const [earliestA, earliestB] = await Promise.all([
+    earliestHourly(pair.asset_a),
+    earliestHourly(pair.asset_b),
   ]);
+  const tryHourly =
+    hourlyCoversPeriod(earliestA, body.periodStart) && hourlyCoversPeriod(earliestB, body.periodStart);
 
-  // Align by date (inner join) -- same reasoning as
-  // apps/pair-engine/src/compute-metrics.ts's alignByDate: the two assets
-  // won't always have identical trading-day coverage.
-  const byDateB = new Map(historyB.map((r) => [r.date, r]));
-  const aligned: { date: string; closeA: number; closeB: number; volumeA: number; volumeB: number }[] = [];
-  for (const rowA of historyA) {
-    const rowB = byDateB.get(rowA.date);
-    if (rowB) {
-      aligned.push({
-        date: rowA.date,
-        closeA: Number(rowA.close),
-        closeB: Number(rowB.close),
-        volumeA: Number(rowA.volume),
-        volumeB: Number(rowB.volume),
-      });
+  let granularity: "daily" | "hourly" = "daily";
+  let aligned: { date: string; closeA: number; closeB: number; volumeA: number; volumeB: number }[] = [];
+
+  if (tryHourly) {
+    const [hourlyA, hourlyB] = await Promise.all([
+      fetchHourlyForPeriod(pair.asset_a, body.periodStart, body.periodEnd),
+      fetchHourlyForPeriod(pair.asset_b, body.periodStart, body.periodEnd),
+    ]);
+    const byTsB = new Map(hourlyB.map((r) => [r.ts, r]));
+    const alignedHourly: typeof aligned = [];
+    for (const rowA of hourlyA) {
+      const rowB = byTsB.get(rowA.ts);
+      if (rowB) {
+        alignedHourly.push({
+          date: rowA.ts,
+          closeA: Number(rowA.close),
+          closeB: Number(rowB.close),
+          // Stored volume is ROLLING 24h -- normalize to per-hour so fee
+          // sums stay comparable to the daily path (see granularity.ts).
+          volumeA: perHourVolume(rowA.volume_24h === null ? null : Number(rowA.volume_24h)),
+          volumeB: perHourVolume(rowB.volume_24h === null ? null : Number(rowB.volume_24h)),
+        });
+      }
+    }
+    // Guard against a formally-covering but practically-sparse hourly series
+    // (e.g. an ingestion gap): require at least two days' worth of hourly
+    // points before preferring hourly over the always-denser-per-span daily.
+    const MIN_HOURLY_POINTS = 48;
+    if (alignedHourly.length >= MIN_HOURLY_POINTS) {
+      granularity = "hourly";
+      aligned = alignedHourly;
+    }
+  }
+
+  if (granularity === "daily") {
+    const [historyA, historyB] = await Promise.all([
+      fetchPriceHistoryForPeriod(pair.asset_a, body.periodStart, body.periodEnd),
+      fetchPriceHistoryForPeriod(pair.asset_b, body.periodStart, body.periodEnd),
+    ]);
+    // Align by date (inner join) -- same reasoning as
+    // apps/pair-engine/src/compute-metrics.ts's alignByDate: the two assets
+    // won't always have identical trading-day coverage.
+    const byDateB = new Map(historyB.map((r) => [r.date, r]));
+    for (const rowA of historyA) {
+      const rowB = byDateB.get(rowA.date);
+      if (rowB) {
+        aligned.push({
+          date: rowA.date,
+          closeA: Number(rowA.close),
+          closeB: Number(rowB.close),
+          volumeA: Number(rowA.volume),
+          volumeB: Number(rowB.volume),
+        });
+      }
     }
   }
 
@@ -93,13 +170,15 @@ backtestRouter.post("/", async (req, res) => {
 
   const requestedDays =
     (new Date(body.periodEnd).getTime() - new Date(body.periodStart).getTime()) / (1000 * 60 * 60 * 24);
+  const expectedPoints = granularity === "hourly" ? requestedDays * 24 : requestedDays;
   let shortenedNote: string | null = null;
-  if (aligned.length < requestedDays * 0.8) {
+  if (aligned.length < expectedPoints * 0.8) {
     // Real data covers meaningfully less than what was requested (e.g. the
     // asset wasn't tracked yet for part of the period) -- proceed using
     // what's actually available, but say so explicitly rather than silently
     // computing over a shorter period than the user asked for.
-    shortenedNote = `Requested ~${Math.round(requestedDays)} days but only ${aligned.length} days of aligned data were available; results reflect the available period only.`;
+    const unit = granularity === "hourly" ? "hourly points" : "days";
+    shortenedNote = `Requested ~${Math.round(expectedPoints)} ${unit} of data but only ${aligned.length} were available; results reflect the available period only.`;
   }
 
   const feeTier = body.feeTier ?? 0.003; // 0.3%, a common default tier -- not from any spec'd source
@@ -137,7 +216,7 @@ backtestRouter.post("/", async (req, res) => {
       result.exitCount,
       JSON.stringify(result.exitTimeline),
       result.positionSizeUsd,
-      "daily", // per Database.md §2 -- update once the hourly upgrade lands
+      granularity, // the resolution actually used -- Database.md §2's upgrade is live
       result.assumedPoolShareUsed,
     ]
   );
@@ -163,7 +242,7 @@ backtestRouter.post("/", async (req, res) => {
     exitCount: result.exitCount,
     exitTimeline: result.exitTimeline,
     positionSizeUsd: result.positionSizeUsd,
-    dataGranularity: "daily",
+    dataGranularity: granularity,
     assumedPoolShareUsed: result.assumedPoolShareUsed,
     createdAt: inserted.created_at,
   };

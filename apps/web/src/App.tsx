@@ -20,6 +20,7 @@ import { WatchlistPage } from "./pages/Watchlist";
 import { PairAnalysisPage } from "./pages/PairAnalysis";
 import { PoolExplorerPage } from "./pages/PoolExplorer";
 import { BacktestPage } from "./pages/Backtest";
+import { AssetDetailPage } from "./pages/AssetDetail";
 import { SiteFooter } from "./components/SiteFooter";
 
 function PoolExplorerRoute() {
@@ -74,6 +75,7 @@ export default function App() {
               <Route path="/search" element={<SearchPage />} />
               <Route path="/watchlist" element={<WatchlistPage />} />
               <Route path="/backtest" element={<BacktestPage />} />
+              <Route path="/assets/:symbol" element={<AssetDetailPage />} />
               <Route path="/pairs/:assetA/:assetB" element={<PairAnalysisPage />} />
               <Route path="/pairs/:assetA/:assetB/pools" element={<PoolExplorerRoute />} />
               <Route path="*" element={<Navigate to="/" replace />} />

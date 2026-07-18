@@ -1,6 +1,6 @@
 import { query } from "@brokerforce/db";
 import type { AssetVerificationStatus } from "@brokerforce/types";
-import type { AssetSnapshot, DailyCandle } from "../sources/coingecko.js";
+import type { AssetSnapshot, DailyCandle, HourlyPoint } from "../sources/coingecko.js";
 import type { TrackedAsset } from "../config/assets.js";
 
 export async function upsertAsset(
@@ -47,6 +47,42 @@ export async function upsertAsset(
       verificationStatus,
     ]
   );
+}
+
+/** True when this asset already has ANY hourly rows -- the ingest loop uses
+ * this to pick backfill depth (90d on first run) vs daily top-up (2d). */
+export async function hasHourlyData(assetSymbol: string): Promise<boolean> {
+  const rows = await query<{ one: number }>(
+    `SELECT 1 AS one FROM asset_price_hourly WHERE asset_symbol = $1 LIMIT 1`,
+    [assetSymbol]
+  );
+  return rows.length > 0;
+}
+
+/** Chunked multi-row upsert -- unlike the daily candles' per-row loop, the
+ * hourly first-run backfill is ~2,160 rows per asset (90d x 24h); per-row
+ * round trips to a remote Postgres would dominate the whole ingestion run.
+ * The daily top-up (<=48 rows) rides the same path. */
+export async function upsertHourlyPrices(assetSymbol: string, points: HourlyPoint[]): Promise<void> {
+  const CHUNK = 500;
+  for (let start = 0; start < points.length; start += CHUNK) {
+    const chunk = points.slice(start, start + CHUNK);
+    const values: string[] = [];
+    const params: unknown[] = [assetSymbol];
+    for (const p of chunk) {
+      const base = params.length;
+      params.push(p.timestamp, p.close, p.volume24h);
+      values.push(`($1, $${base + 1}, $${base + 2}, $${base + 3})`);
+    }
+    await query(
+      `INSERT INTO asset_price_hourly (asset_symbol, "timestamp", close, volume_24h)
+       VALUES ${values.join(", ")}
+       ON CONFLICT (asset_symbol, "timestamp") DO UPDATE SET
+         close = EXCLUDED.close,
+         volume_24h = EXCLUDED.volume_24h`,
+      params
+    );
+  }
 }
 
 export async function upsertDailyCandles(

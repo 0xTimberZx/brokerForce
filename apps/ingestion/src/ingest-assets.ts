@@ -17,10 +17,17 @@ import {
   fetchCurrentSnapshots,
   fetchSingleSnapshot,
   fetchDailyCandles,
+  fetchHourlyPrices,
   fetchContractAddresses,
+  HOURLY_MAX_DAYS,
   type AssetSnapshot,
 } from "./sources/coingecko.js";
-import { upsertAsset, upsertDailyCandles } from "./db/upsert.js";
+import { upsertAsset, upsertDailyCandles, upsertHourlyPrices, hasHourlyData } from "./db/upsert.js";
+
+// Daily top-up depth for the hourly series: 2 days of hourly points per run
+// gives a full day of overlap with the previous run, so a late/skipped run
+// doesn't leave a gap (the scheduler has skipped days before).
+const HOURLY_TOPUP_DAYS = 2;
 
 const PER_ASSET_DELAY_MS = 2000; // space out per-asset OHLC/chart calls; tune to your CoinGecko plan
 
@@ -135,6 +142,25 @@ async function main() {
       // identity conflict -- the id verified fine, the candle fetch itself
       // just failed -- so this does NOT change verification_status.
       console.error(`  -> failed to fetch/upsert candles for ${asset.symbol}:`, err);
+    }
+
+    await sleep(PER_ASSET_DELAY_MS);
+
+    // Hourly series (Database.md §2's granularity upgrade, live now that 006
+    // is built): 90-day backfill the first time an asset is seen, 2-day
+    // top-up every run after. Failure here is isolated the same way as the
+    // daily-candle failure above -- the daily base must never depend on the
+    // hourly extension succeeding.
+    try {
+      const backfilled = await hasHourlyData(asset.symbol);
+      const days = backfilled ? HOURLY_TOPUP_DAYS : HOURLY_MAX_DAYS;
+      const points = await fetchHourlyPrices(sourceId, days);
+      await upsertHourlyPrices(asset.symbol, points);
+      console.log(
+        `  -> upserted ${points.length} hourly point(s) for ${asset.symbol}${backfilled ? "" : " (first-run 90d backfill)"}`
+      );
+    } catch (err) {
+      console.error(`  -> failed to fetch/upsert hourly prices for ${asset.symbol}:`, err);
     }
 
     await sleep(PER_ASSET_DELAY_MS);
