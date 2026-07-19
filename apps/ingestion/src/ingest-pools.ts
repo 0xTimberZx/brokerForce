@@ -43,9 +43,15 @@ import {
 } from "./tier-gate.js";
 import { verifyPoolIdentity, NATIVE_ASSET_FORMS, type ContractRegistry } from "./token-identity.js";
 
-// GeckoTerminal's public tier allows ~30 calls/min; one search call per pair
-// at this spacing stays safely under it even with retries mixed in.
-const PER_PAIR_DELAY_MS = 2_500;
+// One search call per pair. The 2.5s spacing this started with was sized for
+// GeckoTerminal's ~30 calls/min public tier -- but the fallback chain now
+// puts DexScreener (300/min) first, so nearly every call has 5x headroom at
+// 1s. GeckoTerminal only sees calls when DexScreener is failing; in that
+// degraded mode 60/min will draw 429s, which the source already absorbs as
+// skip-and-continue "unavailable" noise rather than run failures. The
+// tighter spacing is what keeps a 630-pair sweep (~10.5 min) inside the
+// pipeline's 40-minute budget after the 36-asset expansion.
+const PER_PAIR_DELAY_MS = 1_000;
 
 // Gate evidence window: slightly wider than 7 calendar days so daily runs
 // (which drift by minutes) still accumulate 7 countable distinct days.
