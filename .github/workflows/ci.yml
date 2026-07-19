@@ -33,3 +33,32 @@ jobs:
 
       - name: Build
         run: npm run build
+
+  # TEMPORARY research job -- removed before this PR leaves draft. Prints
+  # each asset candidate's real DEX footprint (CoinGecko platforms +
+  # DexScreener top pools) to the log; the analysis environment's egress
+  # proxy blocks these APIs, runners don't. Read-only, no DB, no secrets
+  # beyond the optional CoinGecko demo key.
+  research-candidates:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Fetch candidate footprints
+        env:
+          COINGECKO_API_KEY: ${{ secrets.COINGECKO_API_KEY }}
+        run: |
+          set -u
+          CANDIDATES="vechain:VET hedera-hashgraph:HBAR internet-computer:ICP render-token:RENDER pyth-network:PYTH venice-token:VVV lido-dao:LDO curve-dao-token:CRV falcon-finance:FF monad:MON basic-attention-token:BAT compound-governance-token:COMP"
+          for entry in $CANDIDATES; do
+            id="${entry%%:*}"; sym="${entry##*:}"
+            echo "::group::CANDIDATE ${sym} (${id})"
+            cg=$(curl -sS -m 20 -H "accept: application/json" ${COINGECKO_API_KEY:+-H "x-cg-demo-api-key: ${COINGECKO_API_KEY}"} \
+              "https://api.coingecko.com/api/v3/coins/${id}?localization=false&tickers=false&market_data=false&community_data=false&developer_data=false" || echo '{}')
+            echo "COINGECKO ${sym} $(echo "$cg" | jq -c '{symbol: .symbol, name: .name, platforms: (.platforms // {})}' 2>/dev/null || echo 'PARSE_FAIL')"
+            sleep 2
+            ds=$(curl -sS -m 20 -H "accept: application/json" "https://api.dexscreener.com/latest/dex/search?q=${sym}" || echo '{}')
+            echo "DEXSCREENER ${sym} $(echo "$ds" | jq -c --arg s "$sym" '[.pairs // [] | .[] | select((.baseToken.symbol|ascii_upcase) == $s or (.quoteToken.symbol|ascii_upcase) == $s) | {chain: .chainId, base: .baseToken.symbol, baseAddr: (.baseToken.address // "" | ascii_downcase), quote: .quoteToken.symbol, quoteAddr: (.quoteToken.address // "" | ascii_downcase), liqUsd: (.liquidity.usd // 0), vol24: (.volume.h24 // 0)}] | sort_by(-.liqUsd) | .[0:14]' 2>/dev/null || echo 'PARSE_FAIL')"
+            echo "::endgroup::"
+            sleep 2
+          done
+          echo "RESEARCH COMPLETE"
