@@ -1,9 +1,18 @@
-// The 30 tracked assets, per docs/Glossary.md's Asset Class Tiers plus the
+// The 36 tracked assets, per docs/Glossary.md's Asset Class Tiers plus the
 // gold quote-asset feature.
 // (Glossary/Database.md say "~17" as a rough approximation -- the actual
-// count is 30: 5 blue-chip + 5 stable + 13 growth-exotic + 5 degen + 2
+// count is 36: 5 blue-chip + 5 stable + 19 growth-exotic + 5 degen + 2
 // commodity. The two tokenized-gold assets, XAUT/PAXG, were added so crypto
 // can be denominated in gold, not just USD.)
+//
+// ADMISSION BAR (2026-07-19): a candidate earns tracking only with broad
+// cross-ecosystem DEX presence -- multi-EVM pools and/or a real Solana-side
+// deployment -- verified against its CoinGecko canonical contract addresses,
+// never by symbol match alone (DexScreener symbol search is riddled with
+// billion-dollar-fake-liquidity impostors). Chain-isolated tokens (real
+// liquidity only on their own chain: VET, HBAR, ICP, VVV, MON) were
+// evaluated and rejected under this bar; FF was rejected for shaky identity
+// (its CoinGecko id resolves to the USDf stablecoin) plus isolation.
 //
 // IMPORTANT -- coingeckoId values below are my best-confidence mapping from
 // training knowledge, NOT verified against a live API call (this environment
@@ -104,6 +113,14 @@ export const TRACKED_ASSETS: TrackedAsset[] = [
   // venue, tracked here for completeness of the pair universe.
   { symbol: "OKB", class: "growth-exotic", coingeckoId: "okb" },
   { symbol: "CRO", class: "growth-exotic", coingeckoId: "crypto-com-chain" },
+  // Admitted 2026-07-19 under the cross-ecosystem bar (see header). Ids
+  // verified live against CoinGecko that day (symbol + name matched).
+  { symbol: "RENDER", class: "growth-exotic", coingeckoId: "render-token" }, // ETH ERC-20 + native Solana SPL, real RENDER/SOL pools
+  { symbol: "LDO", class: "growth-exotic", coingeckoId: "lido-dao" }, // real pools across ETH/Polygon; contracts on 4 EVM chains
+  { symbol: "CRV", class: "growth-exotic", coingeckoId: "curve-dao-token" }, // real ETH pools incl. crvUSD/USDT; contracts on 6+ chains
+  { symbol: "COMP", class: "growth-exotic", coingeckoId: "compound-governance-token" }, // real ETH + Base pools; contracts on 7+ chains
+  { symbol: "BAT", class: "growth-exotic", coingeckoId: "basic-attention-token" }, // ETH + Base pools AND a legit Solana deployment
+  { symbol: "PYTH", class: "growth-exotic", coingeckoId: "pyth-network" }, // Solana-native, deep SOL/JUP/HNT pairing (EVM leg waived)
 
   // Degen
   { symbol: "PEPE", class: "degen", coingeckoId: "pepe" },
