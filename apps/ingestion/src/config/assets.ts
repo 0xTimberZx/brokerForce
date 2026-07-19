@@ -57,6 +57,15 @@ export interface TrackedAsset {
   /** Set true if this id needs manual verification before trusting ingested data. */
   verifyId?: boolean;
   /**
+   * CoinGecko's listed ticker, when it legitimately differs from the ticker
+   * we track under. The runtime identity check compares the API's returned
+   * symbol against this (falling back to `symbol`) -- without it, a
+   * rebranded listing would scrap a correctly-configured asset every run.
+   * e.g. RNDR: we track the token's on-chain ERC-20 ticker, but CoinGecko
+   * renamed its listing to "render" after the 2024 rebrand.
+   */
+  coingeckoSymbol?: string;
+  /**
    * Policy: any asset whose coingeckoId fails identity verification at
    * ingestion time is scrapped (no price data written) for that run. If a
    * fallbackCoingeckoId is set, the ingestion script retries verification
@@ -115,7 +124,11 @@ export const TRACKED_ASSETS: TrackedAsset[] = [
   { symbol: "CRO", class: "growth-exotic", coingeckoId: "crypto-com-chain" },
   // Admitted 2026-07-19 under the cross-ecosystem bar (see header). Ids
   // verified live against CoinGecko that day (symbol + name matched).
-  { symbol: "RENDER", class: "growth-exotic", coingeckoId: "render-token" }, // ETH ERC-20 + native Solana SPL, real RENDER/SOL pools
+  // RNDR: tracked under the token's on-chain ERC-20 ticker. CoinGecko's
+  // listing rebranded to "render" (hence coingeckoSymbol) and Solana SPL
+  // pools label it RENDER -- the pool-source SYMBOL_ALIASES map folds that
+  // form back onto RNDR, same mechanism as BTCB->BTC.
+  { symbol: "RNDR", class: "growth-exotic", coingeckoId: "render-token", coingeckoSymbol: "render" }, // ETH ERC-20 + native Solana SPL, real SOL pools
   { symbol: "LDO", class: "growth-exotic", coingeckoId: "lido-dao" }, // real pools across ETH/Polygon; contracts on 4 EVM chains
   { symbol: "CRV", class: "growth-exotic", coingeckoId: "curve-dao-token" }, // real ETH pools incl. crvUSD/USDT; contracts on 6+ chains
   { symbol: "COMP", class: "growth-exotic", coingeckoId: "compound-governance-token" }, // real ETH + Base pools; contracts on 7+ chains
