@@ -60,18 +60,20 @@ jobs:
             head -c 2000 /tmp/cfgi.out; echo
             echo "::endgroup::"
           }
+          # NOTE: the v3 API 308-redirects to the TRAILING-SLASH path before the
+          # query string (/scores/ , /assets/); hit that canonical form directly.
           # 1) Asset catalogue (keyless per docs) -- confirms the symbol list shape.
-          probe "assets (keyless)" "https://cfgi.io/api/v3/assets"
+          probe "assets (keyless)" "https://cfgi.io/api/v3/assets/"
           # 2) Whole-market index, a few daily points -- THE shape the parser needs.
           probe "scores MARKET 1d x3 (all fields)" \
-            "https://cfgi.io/api/v3/scores?api_key=${CFGI_API_KEY}&symbols=MARKET&timeframe=1d&limit=3"
+            "https://cfgi.io/api/v3/scores/?api_key=${CFGI_API_KEY}&symbols=MARKET&timeframe=1d&limit=3"
           # 3) Per-token (BTC), a few daily points -- per-asset row shape + date field.
           probe "scores BTC 1d x3 (all fields)" \
-            "https://cfgi.io/api/v3/scores?api_key=${CFGI_API_KEY}&symbols=BTC&timeframe=1d&limit=3"
+            "https://cfgi.io/api/v3/scores/?api_key=${CFGI_API_KEY}&symbols=BTC&timeframe=1d&limit=3"
           # 4) Multi-symbol -- is the body keyed by symbol, or a flat array?
           probe "scores BTC,ETH 1d x2" \
-            "https://cfgi.io/api/v3/scores?api_key=${CFGI_API_KEY}&symbols=BTC,ETH&timeframe=1d&limit=2"
+            "https://cfgi.io/api/v3/scores/?api_key=${CFGI_API_KEY}&symbols=BTC,ETH&timeframe=1d&limit=2"
           # 5) Single latest with score field only -- the minimal documented call.
           probe "scores BTC 15m x1 fields=score" \
-            "https://cfgi.io/api/v3/scores?api_key=${CFGI_API_KEY}&symbols=BTC&timeframe=15m&fields=score&limit=1"
+            "https://cfgi.io/api/v3/scores/?api_key=${CFGI_API_KEY}&symbols=BTC&timeframe=15m&fields=score&limit=1"
           echo "CFGI DISCOVERY COMPLETE"
