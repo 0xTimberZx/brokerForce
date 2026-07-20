@@ -157,12 +157,123 @@ export class CoinMarketCapSentimentSource implements SentimentSource {
   }
 }
 
+// --- CFGI: per-token Fear & Greed (plus its own market-wide index) ---------
+// Response shape confirmed live from a runner (2026-07-20):
+//   GET https://cfgi.io/api/v3/scores/?api_key=KEY&symbols=SYM&timeframe=1d&limit=N
+//     { data: [{ symbol, name, asset_class, timestamp: "<ISO-UTC>", score: <num>,
+//                classification, components:{...}, latest?, age_seconds?, stale? }],
+//       meta: { rows, symbols, timeframe } }
+// Three properties that shape this source, all observed, not assumed:
+//  - The trailing slash on /scores/ is REQUIRED (308-redirects otherwise).
+//  - Readings are intraday (~15 min apart) even at timeframe=1d -- `timeframe`
+//    is the score's lookback window, not the row spacing. We reduce to one
+//    reading per UTC day (the day's latest) so it fits the daily series.
+//  - Hard 1 request/second ("Max 1 request per second"), and a credit-limited
+//    free plan -- so this is a FORWARD-ONLY source (one latest reading per
+//    symbol per run), never a deep backfill. symbols=MARKET -> the market-wide
+//    index (stored as asset_symbol '' , coexisting with alt.me/CMC); a ticker
+//    -> that token's own reading (asset_symbol = the ticker).
+
+const CFGI_BASE = "https://cfgi.io";
+const CFGI_MIN_INTERVAL_MS = 1_100; // stay just under the 1 req/sec ceiling
+export const CFGI_MARKET_SYMBOL = "MARKET";
+
+interface CfgiEntry {
+  symbol?: string;
+  timestamp?: string; // ISO-8601 UTC
+  score?: number;
+  classification?: string;
+}
+
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+/** Pure transform of CFGI's `data` array for ONE requested symbol into
+ * MarketSentiment rows, reduced to one row per UTC date (the latest reading of
+ * that day) and returned oldest-first. `requestedSymbol` sets the stored
+ * asset_symbol: MARKET -> '' (market-wide), anything else -> the ticker.
+ * Exported for unit testing without a network call. */
+export function parseCfgiScores(data: CfgiEntry[], requestedSymbol: string): MarketSentiment[] {
+  const assetSymbol = requestedSymbol === CFGI_MARKET_SYMBOL ? "" : requestedSymbol;
+  // date -> the entry with the latest timestamp on that date.
+  const latestByDate = new Map<string, { ts: string; value: number; classification: string }>();
+  for (const entry of data) {
+    const score = Number(entry.score);
+    const ts = typeof entry.timestamp === "string" ? entry.timestamp : "";
+    if (!Number.isFinite(score) || !ts) continue;
+    const parsedMs = Date.parse(ts);
+    if (!Number.isFinite(parsedMs)) continue;
+    const date = new Date(parsedMs).toISOString().slice(0, 10);
+    // CFGI's score is ~[1,99]; clamp into the table's 0-100 check just in case.
+    const value = Math.max(0, Math.min(100, Math.round(score)));
+    const prev = latestByDate.get(date);
+    if (!prev || ts > prev.ts) {
+      latestByDate.set(date, { ts, value, classification: entry.classification ?? "" });
+    }
+  }
+  return [...latestByDate.entries()]
+    .map(([date, v]) => ({
+      source: "cfgi",
+      assetSymbol,
+      date,
+      value: v.value,
+      classification: normalizeClassification(v.classification, v.value),
+    }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+}
+
+export class CFGISentimentSource implements SentimentSource {
+  readonly id = "cfgi";
+  constructor(
+    private apiKey: string,
+    /** Symbols to fetch. Include CFGI_MARKET_SYMBOL for the market-wide index;
+     * any other entry is a per-token ticker. */
+    private symbols: string[],
+    private baseUrl: string = CFGI_BASE
+  ) {}
+
+  // Forward-only: `days` is ignored. CFGI is intraday + credit-limited, so we
+  // take just the latest reading per symbol each run and accumulate going
+  // forward -- no historical backfill is attempted (it can't do 2018-present).
+  async fetchDaily(_days: number): Promise<MarketSentiment[]> {
+    const rows: MarketSentiment[] = [];
+    for (let i = 0; i < this.symbols.length; i++) {
+      const symbol = this.symbols[i]!;
+      if (i > 0) await sleep(CFGI_MIN_INTERVAL_MS); // respect 1 req/sec
+      try {
+        const url =
+          `${this.baseUrl}/api/v3/scores/?api_key=${encodeURIComponent(this.apiKey)}` +
+          `&symbols=${encodeURIComponent(symbol)}&timeframe=1d&limit=1`;
+        const res = await fetch(url, {
+          signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+          headers: { accept: "application/json" },
+        });
+        if (!res.ok) {
+          // A symbol CFGI doesn't track (or a transient error) skips that
+          // symbol only -- never the whole source. Logged, not thrown.
+          console.warn(`  cfgi ${symbol}: HTTP ${res.status}, skipped`);
+          continue;
+        }
+        const body = (await res.json()) as { data?: CfgiEntry[]; error?: { message?: string } };
+        if (body.error) {
+          console.warn(`  cfgi ${symbol}: ${body.error.message ?? "error"}, skipped`);
+          continue;
+        }
+        rows.push(...parseCfgiScores(body.data ?? [], symbol));
+      } catch (err) {
+        console.warn(`  cfgi ${symbol}: ${err instanceof Error ? err.message : String(err)}, skipped`);
+      }
+    }
+    return rows;
+  }
+}
+
 /** The sources ingested by default. Alternative.me is always on (keyless);
- * CoinMarketCap joins automatically when CMC_API_KEY is set -- so the same
- * code runs everywhere, ingesting whichever providers are configured. The
- * *_BASE_URL overrides point a source at a proxy or test double; unset in
- * production. (CFGI, per-token, lands once its real API endpoint is wired.) */
-export function defaultSentimentSources(): SentimentSource[] {
+ * CoinMarketCap joins when CMC_API_KEY is set; CFGI joins when CFGI_API_KEY is
+ * set AND a non-empty symbol list is supplied (the caller derives it from the
+ * tracked assets + MARKET) -- so the same code runs everywhere, ingesting
+ * whichever providers are configured. The *_BASE_URL overrides point a source
+ * at a proxy or test double; unset in production. */
+export function defaultSentimentSources(opts: { cfgiSymbols?: string[] } = {}): SentimentSource[] {
   const sources: SentimentSource[] = [
     process.env.ALT_ME_BASE_URL
       ? new AlternativeMeSentimentSource(process.env.ALT_ME_BASE_URL)
@@ -170,6 +281,9 @@ export function defaultSentimentSources(): SentimentSource[] {
   ];
   if (process.env.CMC_API_KEY) {
     sources.push(new CoinMarketCapSentimentSource(process.env.CMC_API_KEY, process.env.CMC_BASE_URL));
+  }
+  if (process.env.CFGI_API_KEY && opts.cfgiSymbols && opts.cfgiSymbols.length > 0) {
+    sources.push(new CFGISentimentSource(process.env.CFGI_API_KEY, opts.cfgiSymbols, process.env.CFGI_BASE_URL));
   }
   return sources;
 }
