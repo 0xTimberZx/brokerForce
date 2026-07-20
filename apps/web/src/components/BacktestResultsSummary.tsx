@@ -1,4 +1,5 @@
 import type { BacktestResult } from "@brokerforce/types";
+import { RegimeTag } from "./RegimeTag";
 
 // Per spec6.md's Results summary: net outcome is the HEADLINE -- fees and IL
 // presented together under it, never fees alone. The caveat block at the
@@ -33,6 +34,11 @@ export function BacktestResultsSummary({ result, note }: BacktestResultsSummaryP
           {result.dataGranularity} closes
         </span>
       </div>
+
+      {/* 009: the market regime the simulated period sat in -- the strongest
+          annotation of the three surfaces, since this window is explicit and
+          user-chosen. Renders nothing when sentiment doesn't cover the period. */}
+      <RegimeTag start={result.periodStart} end={result.periodEnd} />
 
       {/* Headline: the net outcome. */}
       <div>

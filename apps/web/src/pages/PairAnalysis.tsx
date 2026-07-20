@@ -12,6 +12,7 @@ import { LiquidityActivityPanel } from "../components/LiquidityActivityPanel";
 import { PairReturnChart } from "../components/PairReturnChart";
 import { FeeILPreview } from "../components/FeeILPreview";
 import { SuggestedRangesPanel } from "../components/SuggestedRangesPanel";
+import { RegimeTag } from "../components/RegimeTag";
 
 const WINDOWS: CanonicalWindow[] = [30, 90, 200];
 
@@ -152,6 +153,11 @@ export function PairAnalysisPage() {
                 <code className="font-mono">docs/ORT.md §5</code>.
               </div>
             )}
+
+            {/* 009: the regime the shown score's canonical window sat in.
+                Keyed to the selected window (30/90/200) so it tracks the toggle;
+                renders nothing until sentiment covers that lookback. */}
+            <RegimeTag windowDays={window} />
 
             <StatisticsSummaryGrid metrics={state.detail.metrics} />
 
