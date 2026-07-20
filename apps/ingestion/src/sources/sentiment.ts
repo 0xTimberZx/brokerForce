@@ -97,11 +97,79 @@ export class AlternativeMeSentimentSource implements SentimentSource {
   }
 }
 
-/** The sources ingested by default. One today; the list is where CMC/CFGI
- * join once their keys exist -- the only place a new provider is registered.
- * ALT_ME_BASE_URL overrides Alternative.me's base (for a proxy or a test
- * double) -- unset in production, where the real public endpoint is used. */
+// --- CoinMarketCap: an independent second F&G methodology ------------------
+// Response shape confirmed live from a runner (2026-07-20):
+//   /v3/fear-and-greed/historical?limit=N ->
+//     { data: [{ timestamp: "<unix-sec>", value: <0-100>, value_classification }], status: {...} }
+// value is a NUMBER here (Alternative.me returns a string). Historical is used
+// for both backfill and top-up so there's a single uniform parser.
+
+const CMC_BASE = "https://pro-api.coinmarketcap.com";
+const CMC_MAX_LIMIT = 500; // v3 historical page cap; also the backfill depth
+
+interface CmcEntry {
+  timestamp?: string | number;
+  value?: number | string;
+  value_classification?: string;
+}
+
+/** Pure transform of CMC's historical `data` array into MarketSentiment rows,
+ * oldest-first. Exported for unit testing. Same drop-garbage discipline as
+ * the Alternative.me parser. */
+export function parseCmcHistorical(data: CmcEntry[], sourceId: string): MarketSentiment[] {
+  const rows: MarketSentiment[] = [];
+  for (const entry of data) {
+    const value = Number(entry.value);
+    const tsSec = Number(entry.timestamp);
+    if (!Number.isFinite(value) || value < 0 || value > 100 || !Number.isFinite(tsSec)) continue;
+    rows.push({
+      source: sourceId,
+      date: new Date(tsSec * 1000).toISOString().slice(0, 10),
+      value: Math.round(value),
+      classification: normalizeClassification(entry.value_classification, value),
+    });
+  }
+  return rows.sort((a, b) => a.date.localeCompare(b.date));
+}
+
+export class CoinMarketCapSentimentSource implements SentimentSource {
+  readonly id = "coinmarketcap";
+  constructor(
+    private apiKey: string,
+    private baseUrl: string = CMC_BASE
+  ) {}
+
+  async fetchDaily(days: number): Promise<MarketSentiment[]> {
+    const limit = days <= 0 ? CMC_MAX_LIMIT : Math.min(days, CMC_MAX_LIMIT);
+    const url = `${this.baseUrl}/v3/fear-and-greed/historical?limit=${limit}`;
+    const res = await fetch(url, {
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      headers: { accept: "application/json", "X-CMC_PRO_API_KEY": this.apiKey },
+    });
+    if (!res.ok) {
+      throw new Error(`CoinMarketCap F&G request failed (${res.status})`);
+    }
+    const body = (await res.json()) as { data?: CmcEntry[]; status?: { error_code?: string; error_message?: string } };
+    if (body.status?.error_code && body.status.error_code !== "0") {
+      throw new Error(`CoinMarketCap F&G error ${body.status.error_code}: ${body.status.error_message ?? ""}`);
+    }
+    return parseCmcHistorical(body.data ?? [], this.id);
+  }
+}
+
+/** The sources ingested by default. Alternative.me is always on (keyless);
+ * CoinMarketCap joins automatically when CMC_API_KEY is set -- so the same
+ * code runs everywhere, ingesting whichever providers are configured. The
+ * *_BASE_URL overrides point a source at a proxy or test double; unset in
+ * production. (CFGI, per-token, lands once its real API endpoint is wired.) */
 export function defaultSentimentSources(): SentimentSource[] {
-  const altBase = process.env.ALT_ME_BASE_URL;
-  return [altBase ? new AlternativeMeSentimentSource(altBase) : new AlternativeMeSentimentSource()];
+  const sources: SentimentSource[] = [
+    process.env.ALT_ME_BASE_URL
+      ? new AlternativeMeSentimentSource(process.env.ALT_ME_BASE_URL)
+      : new AlternativeMeSentimentSource(),
+  ];
+  if (process.env.CMC_API_KEY) {
+    sources.push(new CoinMarketCapSentimentSource(process.env.CMC_API_KEY, process.env.CMC_BASE_URL));
+  }
+  return sources;
 }

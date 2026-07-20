@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseAltMeData, normalizeClassification } from "./sentiment.js";
+import { parseAltMeData, parseCmcHistorical, normalizeClassification } from "./sentiment.js";
 
 describe("normalizeClassification", () => {
   it("keeps a recognized provider label verbatim", () => {
@@ -53,5 +53,38 @@ describe("parseAltMeData", () => {
     );
     expect(rows).toHaveLength(1);
     expect(rows[0]!.value).toBe(50);
+  });
+});
+
+describe("parseCmcHistorical", () => {
+  // Real shape captured from CMC on 2026-07-20: value is a NUMBER, timestamp
+  // is a unix-seconds string.
+  const sample = [
+    { timestamp: "1784419200", value: 35, value_classification: "Fear" }, // 2026-07-19
+    { timestamp: "1784332800", value: 36, value_classification: "Fear" }, // 2026-07-18
+  ];
+
+  it("maps CMC's numeric value + unix-seconds timestamp, oldest-first", () => {
+    const rows = parseCmcHistorical(sample, "coinmarketcap");
+    expect(rows).toHaveLength(2);
+    expect(rows[0]!.date < rows[1]!.date).toBe(true);
+    expect(rows[1]).toEqual({
+      source: "coinmarketcap",
+      date: "2026-07-19",
+      value: 35,
+      classification: "Fear",
+    });
+  });
+
+  it("drops rows with an out-of-range or unparseable value", () => {
+    const rows = parseCmcHistorical(
+      [
+        { timestamp: "1784332800", value: 200, value_classification: "Greed" },
+        { timestamp: "1784332800", value: 42, value_classification: "Fear" },
+      ],
+      "coinmarketcap"
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.value).toBe(42);
   });
 });
