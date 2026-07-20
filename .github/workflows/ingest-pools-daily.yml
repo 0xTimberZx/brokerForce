@@ -70,3 +70,15 @@ jobs:
           npm run compute-metrics
           npm run ingest-pools
           npm run compute-ort
+
+      # Market sentiment (Fear & Greed) is an INDEPENDENT cog -- it doesn't
+      # feed the asset/pool/ORT chain above (regime-aware analytics on top of
+      # it is separate, spec-first work). Run as its own step so a sentiment
+      # feed being down surfaces as a failed step without touching the core
+      # pipeline's result, and vice versa. always() so it runs even if an
+      # earlier step failed.
+      - name: Ingest market sentiment
+        if: always()
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: npm run ingest-sentiment

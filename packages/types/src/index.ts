@@ -276,6 +276,33 @@ export interface AssetOpportunitiesResponse {
   caption: string;
 }
 
+// Per packages/db/migrations/007_market_sentiment.sql -- the Crypto Fear &
+// Greed reading for one source on one date. classification is the provider's
+// own verbatim label, not re-derived from value.
+export type SentimentClassification =
+  | "Extreme Fear"
+  | "Fear"
+  | "Neutral"
+  | "Greed"
+  | "Extreme Greed";
+
+export interface MarketSentiment {
+  source: string;
+  date: string; // YYYY-MM-DD
+  value: number; // 0-100
+  classification: SentimentClassification;
+}
+
+// GET /sentiment -- the latest reading per source plus a short trailing
+// window for a sparkline. Empty sources[] before the first ingestion run.
+export interface SentimentResponse {
+  sources: {
+    source: string;
+    latest: MarketSentiment;
+    history: MarketSentiment[]; // oldest-first, the trailing window
+  }[];
+}
+
 export interface Pool {
   id: string;
   pairId: string;

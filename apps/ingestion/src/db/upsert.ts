@@ -1,5 +1,5 @@
 import { query } from "@brokerforce/db";
-import type { AssetVerificationStatus } from "@brokerforce/types";
+import type { AssetVerificationStatus, MarketSentiment } from "@brokerforce/types";
 import type { AssetSnapshot, DailyCandle, HourlyPoint } from "../sources/coingecko.js";
 import type { TrackedAsset } from "../config/assets.js";
 
@@ -55,6 +55,43 @@ export async function hasHourlyData(assetSymbol: string): Promise<boolean> {
   const rows = await query<{ one: number }>(
     `SELECT 1 AS one FROM asset_price_hourly WHERE asset_symbol = $1 LIMIT 1`,
     [assetSymbol]
+  );
+  return rows.length > 0;
+}
+
+/** Chunked multi-row upsert of market-sentiment rows. The first-run backfill
+ * is ~2,900 rows (2018-present) per source; the daily top-up is a handful.
+ * ON CONFLICT re-updates value/classification so a same-day re-run corrects a
+ * provisional reading. */
+export async function upsertMarketSentiment(rows: MarketSentiment[]): Promise<void> {
+  const CHUNK = 500;
+  for (let start = 0; start < rows.length; start += CHUNK) {
+    const chunk = rows.slice(start, start + CHUNK);
+    const values: string[] = [];
+    const params: unknown[] = [];
+    for (const r of chunk) {
+      const base = params.length;
+      params.push(r.source, r.date, r.value, r.classification);
+      values.push(`($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4})`);
+    }
+    await query(
+      `INSERT INTO market_sentiment (source, "date", value, classification)
+       VALUES ${values.join(", ")}
+       ON CONFLICT (source, "date") DO UPDATE SET
+         value = EXCLUDED.value,
+         classification = EXCLUDED.classification,
+         ingested_at = now()`,
+      params
+    );
+  }
+}
+
+/** True when a source already has any stored rows -- picks backfill (full
+ * history) vs daily top-up, same pattern as the hourly price series. */
+export async function hasSentimentData(source: string): Promise<boolean> {
+  const rows = await query<{ one: number }>(
+    `SELECT 1 AS one FROM market_sentiment WHERE source = $1 LIMIT 1`,
+    [source]
   );
   return rows.length > 0;
 }
