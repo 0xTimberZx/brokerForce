@@ -5,7 +5,7 @@
 // failure -- conflating any two of these would mislead the person using the
 // page about what's actually true.
 
-import type { PairDetailResponse, PairHistoryResponse, CanonicalWindow, OrtScore, OrtRankedPair, PoolListResponse, PoolWithDerived, PoolHistoryPoint, SearchResponse, BacktestRequest, BacktestResult, RangeSuggestionsResponse, AssetOpportunitiesResponse, SentimentResponse } from "@brokerforce/types";
+import type { PairDetailResponse, PairHistoryResponse, CanonicalWindow, OrtScore, OrtRankedPair, PoolListResponse, PoolWithDerived, PoolHistoryPoint, SearchResponse, BacktestRequest, BacktestResult, RangeSuggestionsResponse, AssetOpportunitiesResponse, SentimentResponse, RegimeResponse } from "@brokerforce/types";
 
 // Defaults to the Vite dev proxy (vite.config.ts rewrites /api/* to apps/api
 // with no CORS needed, since the browser only ever talks to the Vite dev
@@ -97,6 +97,28 @@ export async function fetchSentiment(days = 30): Promise<SentimentResponse | nul
     const res = await fetch(`${API_URL}/sentiment?days=${days}`);
     if (!res.ok) return null;
     return (await res.json()) as SentimentResponse;
+  } catch {
+    return null;
+  }
+}
+
+/** 009 Regime Annotation: the market regime a measurement's window sat in.
+ * Pass an explicit period ({start,end}) or a canonical windowDays. Null on any
+ * failure so the RegimeTag renders nothing -- regime is disclosure, and a tag
+ * that can't load should vanish, never show an error. A successful response
+ * with `dominant: null` is the honest "no coverage" state (also renders
+ * nothing), distinct from a fetch failure but handled identically by the tag. */
+export async function fetchRegime(
+  params: { start: string; end: string } | { windowDays: number }
+): Promise<RegimeResponse | null> {
+  const qs =
+    "windowDays" in params
+      ? `windowDays=${params.windowDays}`
+      : `start=${encodeURIComponent(params.start)}&end=${encodeURIComponent(params.end)}`;
+  try {
+    const res = await fetch(`${API_URL}/sentiment/regime?${qs}`);
+    if (!res.ok) return null;
+    return (await res.json()) as RegimeResponse;
   } catch {
     return null;
   }

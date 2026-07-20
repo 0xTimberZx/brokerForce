@@ -303,6 +303,30 @@ export interface SentimentResponse {
   }[];
 }
 
+// 009 Regime Annotation. A coarse three-band lens over the 0-100 Fear & Greed
+// value (spec9.md), separate from the source's own five native labels:
+//   Fear 0-39 · Neutral 40-74 · Greed 75-100
+// Conservative on purpose -- "Greed" only fires at genuinely frothy 75+, and
+// the wide Neutral band keeps day-to-day edge-flips down. This is disclosure
+// only; it never enters an ORT score, range fit, or backtest computation.
+export type Regime = "Fear" | "Neutral" | "Greed";
+
+// GET /sentiment/regime -- summarizes the market regime a measurement's date
+// window sat in, for a single primary source. `dominant === null` is the
+// honest no-coverage state (the series covers none of the window): the tag
+// renders nothing rather than implying a regime it can't back with data.
+// `coveredDays < windowDays` is partial coverage, disclosed as "N of M days".
+export interface RegimeResponse {
+  source: string;
+  windowDays: number; // the requested window span, in calendar days
+  coveredDays: number; // sentiment days actually found within the window
+  dominant: Regime | null; // null => no coverage; render nothing
+  averageValue: number | null; // mean F&G across covered days (null if none)
+  // The regime at the window's start vs its end; present only when they differ
+  // (e.g. "Neutral -> Greed"), null when the window held one regime throughout.
+  transition: { from: Regime; to: Regime } | null;
+}
+
 export interface Pool {
   id: string;
   pairId: string;

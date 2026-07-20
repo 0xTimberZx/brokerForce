@@ -9,6 +9,7 @@ import { Link } from "react-router-dom";
 import type { RangePreset, RangeSuggestionsResponse } from "@brokerforce/types";
 import { fetchRangeSuggestions, type RangeSuggestionsOutcome } from "../api/client";
 import { HistoricalFitCaption } from "./HistoricalFitCaption";
+import { RegimeTag } from "./RegimeTag";
 
 interface SuggestedRangesPanelProps {
   pairId: string;
@@ -94,8 +95,12 @@ export function SuggestedRangesPanel({ pairId, assetA, assetB }: SuggestedRanges
               <PresetRow key={p.name} preset={p} assetA={assetA} assetB={assetB} />
             ))}
           </div>
-          <div className="mt-3 pt-3 border-t border-line">
+          <div className="mt-3 pt-3 border-t border-line space-y-2">
             <HistoricalFitCaption caption={loaded.caption} />
+            {/* 009: the regime the fit window itself was measured in, so a
+                containment figure isn't over-trusted as regime-independent.
+                One tag for the panel, keyed to the same day-count the fit ran on. */}
+            <RegimeTag windowDays={loaded.basis.days} />
           </div>
         </>
       )}
