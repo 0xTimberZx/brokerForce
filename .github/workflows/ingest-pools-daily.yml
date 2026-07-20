@@ -83,7 +83,8 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           # Each source activates only when its key is present -- Alternative.me
           # is keyless and always runs; CoinMarketCap joins when CMC_API_KEY is
-          # set. (CFGI's key is reserved for when its API is wired.)
+          # set; CFGI (market-wide + per-token, forward-only) joins when
+          # CFGI_API_KEY is set.
           CMC_API_KEY: ${{ secrets.CMC_API_KEY }}
           CFGI_API_KEY: ${{ secrets.CFGI_API_KEY }}
         run: npm run ingest-sentiment

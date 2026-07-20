@@ -14,15 +14,27 @@
 
 import "dotenv/config";
 import { closePool } from "@brokerforce/db";
-import { defaultSentimentSources } from "./sources/sentiment.js";
+import { defaultSentimentSources, CFGI_MARKET_SYMBOL } from "./sources/sentiment.js";
 import { upsertMarketSentiment, hasSentimentData } from "./db/upsert.js";
+import { TRACKED_ASSETS } from "./config/assets.js";
 
 // Daily top-up depth: a week of overlap absorbs missed/late runs cheaply
 // (the series is one row per day, so this is trivially small).
 const TOPUP_DAYS = 7;
 
+// The symbols CFGI ingests, if its key is set: its market-wide index plus each
+// tracked asset for which a Fear & Greed reading is meaningful -- i.e. NOT the
+// stablecoins or tokenized gold (a peg has no fear/greed to measure). CFGI
+// silently skips any of these it doesn't track, so an over-broad list is safe.
+function cfgiSymbols(): string[] {
+  const perToken = TRACKED_ASSETS.filter((a) => a.class !== "stable" && a.class !== "commodity").map(
+    (a) => a.symbol
+  );
+  return [CFGI_MARKET_SYMBOL, ...perToken];
+}
+
 async function main() {
-  const sources = defaultSentimentSources();
+  const sources = defaultSentimentSources({ cfgiSymbols: cfgiSymbols() });
   console.log(`Ingesting market sentiment from ${sources.length} source(s): ${sources.map((s) => s.id).join(", ")}.`);
 
   let totalRows = 0;

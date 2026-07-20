@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseAltMeData, parseCmcHistorical, normalizeClassification } from "./sentiment.js";
+import { parseAltMeData, parseCmcHistorical, parseCfgiScores, normalizeClassification } from "./sentiment.js";
 
 describe("normalizeClassification", () => {
   it("keeps a recognized provider label verbatim", () => {
@@ -86,5 +86,69 @@ describe("parseCmcHistorical", () => {
     );
     expect(rows).toHaveLength(1);
     expect(rows[0]!.value).toBe(42);
+  });
+});
+
+describe("parseCfgiScores", () => {
+  // Real shape captured from cfgi.io/api/v3/scores on 2026-07-20: intraday
+  // rows (~15 min apart) with a numeric `score`, ISO-UTC `timestamp`, and a
+  // provider `classification`.
+  const sample = [
+    { symbol: "BTC", timestamp: "2026-07-20T18:48:37Z", score: 50.5, classification: "Neutral" },
+    { symbol: "BTC", timestamp: "2026-07-20T18:33:36Z", score: 49, classification: "Neutral" },
+    { symbol: "BTC", timestamp: "2026-07-20T18:18:35Z", score: 56, classification: "Neutral" },
+  ];
+
+  it("reduces a day's intraday readings to one row (the day's latest) and rounds the score", () => {
+    const rows = parseCfgiScores(sample, "BTC");
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toEqual({
+      source: "cfgi",
+      assetSymbol: "BTC",
+      date: "2026-07-20",
+      value: 51, // round(50.5), from the 18:48 reading (latest that day)
+      classification: "Neutral",
+    });
+  });
+
+  it("stores the MARKET index under the market-wide '' sentinel", () => {
+    const rows = parseCfgiScores(
+      [{ symbol: "MARKET", timestamp: "2026-07-20T18:48:37Z", score: 47.5, classification: "Neutral" }],
+      "MARKET"
+    );
+    expect(rows[0]!.assetSymbol).toBe("");
+    expect(rows[0]!.source).toBe("cfgi");
+    expect(rows[0]!.value).toBe(48);
+  });
+
+  it("keeps one row per date, newest-of-day, oldest-first across days", () => {
+    const rows = parseCfgiScores(
+      [
+        { symbol: "ETH", timestamp: "2026-07-19T23:45:00Z", score: 30, classification: "Fear" },
+        { symbol: "ETH", timestamp: "2026-07-20T00:15:00Z", score: 40, classification: "Fear" },
+        { symbol: "ETH", timestamp: "2026-07-20T18:45:00Z", score: 44, classification: "Fear" },
+      ],
+      "ETH"
+    );
+    expect(rows.map((r) => r.date)).toEqual(["2026-07-19", "2026-07-20"]);
+    expect(rows[1]!.value).toBe(44); // the later 2026-07-20 reading wins
+  });
+
+  it("drops entries with a non-finite score or bad timestamp", () => {
+    const rows = parseCfgiScores(
+      [
+        { symbol: "SOL", timestamp: "not-a-date", score: 50, classification: "Neutral" },
+        { symbol: "SOL", timestamp: "2026-07-20T10:00:00Z", score: NaN, classification: "Neutral" },
+        { symbol: "SOL", timestamp: "2026-07-20T12:00:00Z", score: 62, classification: "Greed" },
+      ],
+      "SOL"
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.value).toBe(62);
+  });
+
+  it("derives a classification from the value when CFGI's label is missing", () => {
+    const rows = parseCfgiScores([{ symbol: "BTC", timestamp: "2026-07-20T12:00:00Z", score: 82 }], "BTC");
+    expect(rows[0]!.classification).toBe("Extreme Greed");
   });
 });

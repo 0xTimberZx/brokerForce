@@ -60,9 +60,10 @@ export async function hasHourlyData(assetSymbol: string): Promise<boolean> {
 }
 
 /** Chunked multi-row upsert of market-sentiment rows. The first-run backfill
- * is ~2,900 rows (2018-present) per source; the daily top-up is a handful.
- * ON CONFLICT re-updates value/classification so a same-day re-run corrects a
- * provisional reading. */
+ * is ~2,900 rows (2018-present) per market-wide source; the daily top-up is a
+ * handful. `assetSymbol` defaults to '' (market-wide); CFGI passes a ticker
+ * for its per-token rows (migration 008). ON CONFLICT re-updates
+ * value/classification so a same-day re-run corrects a provisional reading. */
 export async function upsertMarketSentiment(rows: MarketSentiment[]): Promise<void> {
   const CHUNK = 500;
   for (let start = 0; start < rows.length; start += CHUNK) {
@@ -71,13 +72,13 @@ export async function upsertMarketSentiment(rows: MarketSentiment[]): Promise<vo
     const params: unknown[] = [];
     for (const r of chunk) {
       const base = params.length;
-      params.push(r.source, r.date, r.value, r.classification);
-      values.push(`($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4})`);
+      params.push(r.source, r.assetSymbol ?? "", r.date, r.value, r.classification);
+      values.push(`($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5})`);
     }
     await query(
-      `INSERT INTO market_sentiment (source, "date", value, classification)
+      `INSERT INTO market_sentiment (source, asset_symbol, "date", value, classification)
        VALUES ${values.join(", ")}
-       ON CONFLICT (source, "date") DO UPDATE SET
+       ON CONFLICT (source, asset_symbol, "date") DO UPDATE SET
          value = EXCLUDED.value,
          classification = EXCLUDED.classification,
          ingested_at = now()`,

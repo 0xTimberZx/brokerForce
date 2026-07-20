@@ -291,6 +291,11 @@ export interface MarketSentiment {
   date: string; // YYYY-MM-DD
   value: number; // 0-100
   classification: SentimentClassification;
+  // Per-token dimension (migration 008). Omitted / '' = the market-wide
+  // reading (Alternative.me, CMC, CFGI's MARKET index). A ticker ('BTC') is a
+  // per-token CFGI reading. The market-wide surfaces filter to '' so per-token
+  // rows accumulate without changing what the dashboard chip / regime show.
+  assetSymbol?: string;
 }
 
 // GET /sentiment -- the latest reading per source plus a short trailing

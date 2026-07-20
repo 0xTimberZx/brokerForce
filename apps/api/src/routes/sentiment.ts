@@ -39,6 +39,7 @@ sentimentRouter.get("/", async (req, res) => {
     `SELECT source, "date"::text AS date, value, classification
      FROM market_sentiment
      WHERE "date" >= (CURRENT_DATE - ($1 || ' days')::interval)
+       AND asset_symbol = ''
      ORDER BY source ASC, "date" ASC`,
     [String(days)]
   );
@@ -109,7 +110,8 @@ sentimentRouter.get("/regime", async (req, res) => {
         ? Math.min(Math.floor(rawWin), MAX_REGIME_WINDOW_DAYS)
         : DEFAULT_REGIME_WINDOW_DAYS;
     const latest = await query<{ date: string }>(
-      `SELECT "date"::text AS date FROM market_sentiment WHERE source = $1 ORDER BY "date" DESC LIMIT 1`,
+      `SELECT "date"::text AS date FROM market_sentiment
+       WHERE source = $1 AND asset_symbol = '' ORDER BY "date" DESC LIMIT 1`,
       [source]
     );
     if (latest.length === 0) {
@@ -127,7 +129,7 @@ sentimentRouter.get("/regime", async (req, res) => {
   const rows = await query<{ date: string; value: number }>(
     `SELECT "date"::text AS date, value
      FROM market_sentiment
-     WHERE source = $1 AND "date" >= $2::date AND "date" <= $3::date
+     WHERE source = $1 AND asset_symbol = '' AND "date" >= $2::date AND "date" <= $3::date
      ORDER BY "date" ASC`,
     [source, start, end]
   );
