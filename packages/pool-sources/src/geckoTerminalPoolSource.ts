@@ -62,9 +62,12 @@ export function parsePoolName(name: string): { symbols: string[]; feeTier: numbe
 /** Non-"W"-prefixed pool symbols that are really a canonical asset. The W-rule
  * in symbolsMatch already covers WBTC/WETH/WBNB/WSOL; this map is only for
  * forms that don't follow that pattern -- e.g. BNB Chain's BTCB (Binance-Peg
- * Bitcoin), a genuine form of BTC that would otherwise miss the match. */
+ * Bitcoin), a genuine form of BTC that would otherwise miss the match, or
+ * RENDER (the post-rebrand label Solana SPL pools carry) for RNDR, whose
+ * Ethereum ERC-20 pools still report the original on-chain ticker. */
 const SYMBOL_ALIASES: Record<string, string> = {
   BTCB: "BTC",
+  RENDER: "RNDR",
 };
 
 /** Symbol equality that treats canonical wrapped/pegged forms as the same

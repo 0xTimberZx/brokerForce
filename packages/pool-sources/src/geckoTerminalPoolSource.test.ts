@@ -64,6 +64,14 @@ describe("symbolsMatch", () => {
     expect(symbolsMatch("BTC", "BTCB")).toBe(true);
   });
 
+  it("treats RENDER (post-rebrand Solana SPL label) as a form of RNDR", () => {
+    // The asset is tracked under its on-chain ERC-20 ticker RNDR; Solana
+    // pools label the same token RENDER.
+    expect(symbolsMatch("RENDER", "RNDR")).toBe(true);
+    expect(symbolsMatch("RNDR", "RENDER")).toBe(true);
+    expect(symbolsMatch("render", "rndr")).toBe(true);
+  });
+
   it("does not match different assets", () => {
     expect(symbolsMatch("USDT", "USDC")).toBe(false);
     // BTCB is BTC's form only -- it must not match some other asset.

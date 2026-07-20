@@ -36,7 +36,11 @@ function sleep(ms: number): Promise<void> {
 }
 
 function symbolMatches(asset: TrackedAsset, snapshot: AssetSnapshot | undefined): boolean {
-  return !!snapshot && snapshot.symbol.toLowerCase() === asset.symbol.toLowerCase();
+  // coingeckoSymbol covers listings whose ticker legitimately differs from
+  // the one we track under (e.g. RNDR vs CoinGecko's post-rebrand "render")
+  // -- otherwise a correct config would be scrapped as a conflict every run.
+  const expected = (asset.coingeckoSymbol ?? asset.symbol).toLowerCase();
+  return !!snapshot && snapshot.symbol.toLowerCase() === expected;
 }
 
 /**
