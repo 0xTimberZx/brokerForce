@@ -5,7 +5,7 @@
 // failure -- conflating any two of these would mislead the person using the
 // page about what's actually true.
 
-import type { PairDetailResponse, PairHistoryResponse, CanonicalWindow, OrtScore, OrtRankedPair, PoolListResponse, PoolWithDerived, PoolHistoryPoint, SearchResponse, BacktestRequest, BacktestResult, RangeSuggestionsResponse, AssetOpportunitiesResponse } from "@brokerforce/types";
+import type { PairDetailResponse, PairHistoryResponse, CanonicalWindow, OrtScore, OrtRankedPair, PoolListResponse, PoolWithDerived, PoolHistoryPoint, SearchResponse, BacktestRequest, BacktestResult, RangeSuggestionsResponse, AssetOpportunitiesResponse, SentimentResponse } from "@brokerforce/types";
 
 // Defaults to the Vite dev proxy (vite.config.ts rewrites /api/* to apps/api
 // with no CORS needed, since the browser only ever talks to the Vite dev
@@ -87,6 +87,19 @@ export async function fetchOrtRanked(
 ): Promise<OrtRankedPair[]> {
   const goldParam = quote === "gold" ? "&quote=gold" : "";
   return getJson<OrtRankedPair[]>(`/pairs/ort?sort=desc&window=${window}&limit=${limit}${goldParam}`);
+}
+
+/** Market Fear & Greed, latest + trailing window per source. Null on any
+ * failure -- the dashboard chip renders nothing rather than an error, since
+ * sentiment is context, not a core surface. */
+export async function fetchSentiment(days = 30): Promise<SentimentResponse | null> {
+  try {
+    const res = await fetch(`${API_URL}/sentiment?days=${days}`);
+    if (!res.ok) return null;
+    return (await res.json()) as SentimentResponse;
+  } catch {
+    return null;
+  }
 }
 
 /** 002 Search: grouped assets + pairs (with inline 90d ORT) for a query.

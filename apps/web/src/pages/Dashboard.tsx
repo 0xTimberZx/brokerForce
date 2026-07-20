@@ -11,6 +11,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { SearchInput } from "../components/SearchInput";
+import { MarketRegimeChip } from "../components/MarketRegimeChip";
 import { TopOpportunitiesPanel } from "../components/TopOpportunitiesPanel";
 import { WatchlistSummaryCard } from "../components/WatchlistSummaryCard";
 import { RecentlyViewedList } from "../components/RecentlyViewedList";
@@ -35,7 +36,10 @@ export function DashboardPage() {
           <h1 className="font-display text-xl text-ink">Dashboard</h1>
           <p className="font-body text-xs text-ink-muted">What's worth attention right now</p>
         </div>
-        <SearchInput onSubmit={(q) => navigate(`/search?q=${encodeURIComponent(q)}`)} />
+        <div className="flex flex-wrap items-center gap-4">
+          <MarketRegimeChip />
+          <SearchInput onSubmit={(q) => navigate(`/search?q=${encodeURIComponent(q)}`)} />
+        </div>
       </header>
 
       <div className="grid md:grid-cols-2 gap-4 items-start">

@@ -14,6 +14,7 @@
     "migrate": "npm run migrate --workspace=packages/db",
     "ingest": "npm run ingest --workspace=apps/ingestion",
     "ingest-pools": "npm run ingest-pools --workspace=apps/ingestion",
+    "ingest-sentiment": "npm run ingest-sentiment --workspace=apps/ingestion",
     "generate-pairs": "npm run generate-pairs --workspace=apps/pair-engine",
     "compute-metrics": "npm run compute-metrics --workspace=apps/pair-engine",
     "compute-ort": "npm run compute-ort --workspace=apps/ort-engine",

@@ -7,6 +7,7 @@ import { searchRouter } from "./routes/search.js";
 import { poolsRouter, poolDetailRouter } from "./routes/pools.js";
 import { backtestRouter } from "./routes/backtest.js";
 import { rangeSuggestionsRouter, assetOpportunitiesRouter } from "./routes/rangeSuggestions.js";
+import { sentimentRouter } from "./routes/sentiment.js";
 
 const app = express();
 app.use(express.json());
@@ -32,6 +33,7 @@ app.use("/pairs", pairsRouter); // /pairs/:assetA/:assetB (+ /history) — gener
 app.use("/search", searchRouter);
 app.use("/pools", poolDetailRouter); // /pools/:poolId, /pools/:poolId/history
 app.use("/backtest", backtestRouter);
+app.use("/sentiment", sentimentRouter); // market Fear & Greed (008-adjacent sentiment cog)
 
 app.get("/health", (_req, res) => {
   res.json({ status: "ok" });
