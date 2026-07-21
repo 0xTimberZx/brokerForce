@@ -173,6 +173,12 @@ export class CoinMarketCapSentimentSource implements SentimentSource {
 //    symbol per run), never a deep backfill. symbols=MARKET -> the market-wide
 //    index (stored as asset_symbol '' , coexisting with alt.me/CMC); a ticker
 //    -> that token's own reading (asset_symbol = the ticker).
+// CREDIT DISCIPLINE: request `fields=score` only. The default response bundles
+// ten signal components (whales/social/volume/...) we never read, and CFGI
+// meters credits by payload -- fetching the full stack for every symbol daily
+// drained the free balance fast. score-only still returns the classification
+// label we need. The caller also keeps the symbol set small (MARKET-only by
+// default; see ingest-sentiment's cfgiSymbols) so daily spend stays minimal.
 
 const CFGI_BASE = "https://cfgi.io";
 const CFGI_MIN_INTERVAL_MS = 1_100; // stay just under the 1 req/sec ceiling
@@ -242,7 +248,7 @@ export class CFGISentimentSource implements SentimentSource {
       try {
         const url =
           `${this.baseUrl}/api/v3/scores/?api_key=${encodeURIComponent(this.apiKey)}` +
-          `&symbols=${encodeURIComponent(symbol)}&timeframe=1d&limit=1`;
+          `&symbols=${encodeURIComponent(symbol)}&timeframe=1d&limit=1&fields=score`;
         const res = await fetch(url, {
           signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
           headers: { accept: "application/json" },
