@@ -193,6 +193,22 @@ interface CfgiEntry {
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
+// Credit/quota exhaustion is different from an ordinary per-symbol miss: once
+// the balance is gone, every remaining call is futile, so the whole run should
+// stop with ONE clean warning rather than erroring symbol by symbol. We never
+// captured CFGI's exact out-of-credits body, so match broadly on the words a
+// quota error uses -- but NOT bare "limit", which would wrongly swallow the
+// transient 1-req/sec rate-limit message ("Max 1 request per second.").
+const CFGI_QUOTA_RE = /insufficient|credit|quota|payment required|exhaust/i;
+
+/** True when a CFGI error (an HTTP status + its message/body) looks like the
+ * account has run out of credits, as opposed to a bad symbol or a transient
+ * rate-limit. Pure + exported for unit testing. */
+export function isCfgiQuotaError(status: number, message: string): boolean {
+  if (status === 402) return true; // Payment Required
+  return CFGI_QUOTA_RE.test(message ?? "");
+}
+
 /** Pure transform of CFGI's `data` array for ONE requested symbol into
  * MarketSentiment rows, reduced to one row per UTC date (the latest reading of
  * that day) and returned oldest-first. `requestedSymbol` sets the stored
@@ -254,14 +270,24 @@ export class CFGISentimentSource implements SentimentSource {
           headers: { accept: "application/json" },
         });
         if (!res.ok) {
-          // A symbol CFGI doesn't track (or a transient error) skips that
-          // symbol only -- never the whole source. Logged, not thrown.
+          const text = await res.text().catch(() => "");
+          // Out of credits -> stop the whole run (more calls are futile), with
+          // one actionable warning. Any other non-2xx is a per-symbol miss.
+          if (isCfgiQuotaError(res.status, text)) {
+            console.warn(this.quotaWarning(`HTTP ${res.status}`));
+            break;
+          }
           console.warn(`  cfgi ${symbol}: HTTP ${res.status}, skipped`);
           continue;
         }
-        const body = (await res.json()) as { data?: CfgiEntry[]; error?: { message?: string } };
+        const body = (await res.json()) as { data?: CfgiEntry[]; error?: { message?: string; code?: string } };
         if (body.error) {
-          console.warn(`  cfgi ${symbol}: ${body.error.message ?? "error"}, skipped`);
+          const msg = body.error.message ?? body.error.code ?? "";
+          if (isCfgiQuotaError(0, msg)) {
+            console.warn(this.quotaWarning(msg));
+            break;
+          }
+          console.warn(`  cfgi ${symbol}: ${msg || "error"}, skipped`);
           continue;
         }
         rows.push(...parseCfgiScores(body.data ?? [], symbol));
@@ -270,6 +296,14 @@ export class CFGISentimentSource implements SentimentSource {
       }
     }
     return rows;
+  }
+
+  private quotaWarning(detail: string): string {
+    return (
+      `  cfgi: credits appear exhausted (${detail}) -- stopping CFGI for this run; ` +
+      `other sentiment sources are unaffected. Top up CFGI credits, or unset ` +
+      `CFGI_API_KEY to disable it until then.`
+    );
   }
 }
 

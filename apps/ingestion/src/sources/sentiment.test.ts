@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { parseAltMeData, parseCmcHistorical, parseCfgiScores, normalizeClassification } from "./sentiment.js";
+import {
+  parseAltMeData,
+  parseCmcHistorical,
+  parseCfgiScores,
+  isCfgiQuotaError,
+  normalizeClassification,
+} from "./sentiment.js";
 
 describe("normalizeClassification", () => {
   it("keeps a recognized provider label verbatim", () => {
@@ -150,5 +156,27 @@ describe("parseCfgiScores", () => {
   it("derives a classification from the value when CFGI's label is missing", () => {
     const rows = parseCfgiScores([{ symbol: "BTC", timestamp: "2026-07-20T12:00:00Z", score: 82 }], "BTC");
     expect(rows[0]!.classification).toBe("Extreme Greed");
+  });
+});
+
+describe("isCfgiQuotaError", () => {
+  it("treats HTTP 402 and credit/quota language as exhaustion (stop the run)", () => {
+    expect(isCfgiQuotaError(402, "")).toBe(true);
+    expect(isCfgiQuotaError(200, "insufficient credits")).toBe(true);
+    expect(isCfgiQuotaError(0, "Your credit balance has been exhausted")).toBe(true);
+    expect(isCfgiQuotaError(0, "monthly quota exceeded")).toBe(true);
+    expect(isCfgiQuotaError(403, "payment required to continue")).toBe(true);
+  });
+
+  it("does NOT treat the 1-req/sec rate limit as exhaustion", () => {
+    // The whole point of the guard: a transient rate-limit must remain a
+    // per-symbol skip, never stop the run as if credits were gone.
+    expect(isCfgiQuotaError(429, "Max 1 request per second.")).toBe(false);
+  });
+
+  it("does NOT treat an unknown symbol or generic error as exhaustion", () => {
+    expect(isCfgiQuotaError(404, "unknown symbol")).toBe(false);
+    expect(isCfgiQuotaError(500, "internal error")).toBe(false);
+    expect(isCfgiQuotaError(0, "")).toBe(false);
   });
 });
