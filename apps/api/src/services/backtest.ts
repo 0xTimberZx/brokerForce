@@ -1,39 +1,39 @@
-// Core backtest simulation logic. Per docs/specs/006-backtests/spec6.md.
+// Core backtest simulation logic. Per docs/specs/006-backtests/spec6.md, with
+// the fee model rewired onto real pool data by spec10 (Fix 2).
 //
-// REAL GAP, documented rather than silently resolved: computing dollar fees
-// earned needs a position size and a pool-liquidity share -- neither is
-// listed as a spec input (spec6.md's setup panel only asks for pair, range,
-// period, fee tier), and neither has real data behind it anyway, since pool
-// TVL doesn't exist yet (apps/ingestion only covers asset-level data; pool
-// ingestion is separate, later work). Time-in-range, exit count, and IL are
-// all precise -- they only depend on price history, which IS real. Fees are
-// necessarily a rough, clearly-labeled estimate.
+// Fees are now grounded in the pair's actual pool -- its TVL and 24h volume,
+// already ingested -- instead of the old asset-level trading-volume proxy
+// (which produced absurd P&L, e.g. +$108M on BTC/ETH, because it multiplied a
+// guessed pool-share constant by billions of dollars of asset volume).
 //
-// The model adopted here:
+// The model:
 //   - positionSizeUsd: a real, required input even though spec6.md didn't
 //     list it -- there's no way to express a dollar P&L without one.
 //     Defaults to $10,000 if the caller doesn't supply one, purely as a
 //     consistent baseline for comparing scenarios within one session, not a
 //     claim about what's "typical."
-//   - A fixed assumed pool-share constant (BASE_POOL_SHARE), scaled by a
-//     concentration factor that rewards a tighter range -- consistent with
-//     how concentrated liquidity actually behaves (a narrower range earns a
-//     larger share of fees per dollar of capital than a wide one), but NOT
-//     Uniswap v3's actual sqrt-price-tick math, which is a meaningfully
-//     bigger undertaking and would still be using a guessed pool-share
-//     constant underneath regardless of how precisely the curve math were
-//     implemented. A simple, honestly-labeled multiplier was judged more
-//     trustworthy than a partially-correct version of the real formula.
+//   - poolTvlUsd + poolVolumePerStepUsd: the pair's real pool depth and its
+//     per-step (per-day for daily, per-hour for hourly) volume, read from the
+//     `pools` table by the route. When present:
+//       baseShare      = positionSize / (poolTvl + positionSize)  -- the LP's
+//                        honest fraction of the pool once its capital is added.
+//       effectiveShare = min(MAX_EFFECTIVE_POOL_SHARE, baseShare × concentrationFactor)
+//                        -- a tighter range concentrates capital and earns a
+//                        larger share per dollar (kept from the old model), but
+//                        the pool's actual TVL now bounds it, so fees can't run
+//                        away into the billions.
+//       feesEarnedUsd  = Σ over in-range steps of poolVolumePerStep × feeTier × effectiveShare
+//     This is still an ESTIMATE, not Uniswap v3's sqrt-price-tick math -- but
+//     it's bounded by real pool liquidity rather than a free-floating constant.
+//   - When no pool data (poolTvl ≤ 0 / absent): feesEarnedUsd = 0,
+//     feeBasis = "unavailable", netPnl = IL only. Never a fabricated number.
 //
-// Treat fees/net P&L from this model as DIRECTIONAL and COMPARATIVE --
-// useful for "is a tighter range better than a wider one for this pair,"
-// not as a dollar prediction. Time-in-range, exit count, and IL don't carry
-// this caveat; they're computed directly from real price history.
+// Time-in-range, exit count, and IL are precise -- computed directly from real
+// price history -- and unchanged by this rework.
 
-import { impermanentLossEstimate, computeRangeStreaks, pairVolumeProxy } from "@brokerforce/stats";
+import { impermanentLossEstimate, computeRangeStreaks } from "@brokerforce/stats";
 
 export const DEFAULT_POSITION_SIZE_USD = 10_000;
-const BASE_POOL_SHARE = 0.01; // 1% -- an assumed, clearly-arbitrary baseline, not derived from anything
 const MAX_CONCENTRATION_FACTOR = 50; // caps the reward for an extremely tight range, avoiding absurd values
 const MAX_EFFECTIVE_POOL_SHARE = 0.5; // a position can't realistically be assumed to own most of a real pool
 
@@ -47,6 +47,11 @@ export interface BacktestInput {
   rangeMax: number;
   feeTier: number; // fractional, e.g. 0.003 for 0.3%
   positionSizeUsd?: number;
+  // The pair's real pool depth + per-step volume (spec10 Fix 2), read from the
+  // `pools` table by the route. Both required for a "pool"-basis fee estimate;
+  // absent (or poolTvl ≤ 0) -> fees 0, feeBasis "unavailable".
+  poolTvlUsd?: number;
+  poolVolumePerStepUsd?: number; // pool 24h volume /1 (daily) or /24 (hourly)
 }
 
 export interface BacktestExitEvent {
@@ -66,6 +71,10 @@ export interface BacktestResult {
   // Surfaced so the caller/UI can disclose the assumption rather than
   // present feesEarnedUsd as if it were a precise figure.
   assumedPoolShareUsed: number;
+  // "pool" when the estimate is grounded in real pool TVL + volume;
+  // "unavailable" when the pair has no pool data, in which case feesEarnedUsd
+  // is 0 and the UI must show "needs pool data" rather than a fabricated figure.
+  feeBasis: "pool" | "unavailable";
 }
 
 export function runBacktest(input: BacktestInput): BacktestResult {
@@ -94,13 +103,29 @@ export function runBacktest(input: BacktestInput): BacktestResult {
 
   const rangeWidthPct = (rangeMax - rangeMin) / ((rangeMin + rangeMax) / 2);
   const concentrationFactor = Math.min(MAX_CONCENTRATION_FACTOR, Math.max(1, 1 / rangeWidthPct));
-  const assumedPoolShareUsed = Math.min(MAX_EFFECTIVE_POOL_SHARE, BASE_POOL_SHARE * concentrationFactor);
 
-  const pairVolume = pairVolumeProxy(input.volumesA, input.volumesB);
+  // Fee model (spec10 Fix 2): grounded in the pair's real pool when its TVL and
+  // per-step volume are present, else "unavailable" with 0 fees -- never a
+  // number pulled from asset-level volume.
+  const poolTvlUsd = input.poolTvlUsd ?? 0;
+  const poolVolumePerStepUsd = input.poolVolumePerStepUsd ?? 0;
+  const hasPoolData = poolTvlUsd > 0;
+
   let feesEarnedUsd = 0;
-  for (let i = 0; i < pairVolume.length; i++) {
-    if (inRangeFlags[i]) {
-      feesEarnedUsd += pairVolume[i]! * feeTier * assumedPoolShareUsed; // i < pairVolume.length by loop bounds
+  let assumedPoolShareUsed = 0;
+  let feeBasis: "pool" | "unavailable" = "unavailable";
+
+  if (hasPoolData) {
+    // The LP's honest fraction of the pool once its own capital is added, then
+    // concentrated by a tighter range but capped so a position can't be assumed
+    // to own most of a real pool.
+    const baseShare = positionSizeUsd / (poolTvlUsd + positionSizeUsd);
+    assumedPoolShareUsed = Math.min(MAX_EFFECTIVE_POOL_SHARE, baseShare * concentrationFactor);
+    feeBasis = "pool";
+    for (let i = 0; i < inRangeFlags.length; i++) {
+      if (inRangeFlags[i]) {
+        feesEarnedUsd += poolVolumePerStepUsd * feeTier * assumedPoolShareUsed;
+      }
     }
   }
 
@@ -119,6 +144,7 @@ export function runBacktest(input: BacktestInput): BacktestResult {
     exitTimeline,
     positionSizeUsd,
     assumedPoolShareUsed,
+    feeBasis,
   };
 }
 

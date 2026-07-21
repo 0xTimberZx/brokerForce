@@ -133,6 +133,9 @@ export interface VolumeFieldSet {
   avgVolume24h: number | null;
   avgVolume7d: number | null;
   avgVolume30d: number | null;
+  // Aggregate pool TVL for the pair (Σ pools.tvl), joined into the pair-detail
+  // response by routes/pairs.ts (spec10 Fix 3). Null when the pair has no pools.
+  poolTvl: number | null;
   volumeTvlRatio: number | null;
   volumeTrend: number | null;
   volumeStability: number | null;
@@ -428,6 +431,10 @@ export interface BacktestResult {
   // directly in the API response, not just in code comments a frontend
   // consumer would never see.
   assumedPoolShareUsed: number;
+  // "pool" when the fee estimate is grounded in real pool TVL + volume;
+  // "unavailable" when the pair has no pool data (fees 0). Response-only, no DB
+  // column -- GET infers it from whether the stored fee is nonzero (spec10).
+  feeBasis: "pool" | "unavailable";
   createdAt: string;
 }
 

@@ -11,6 +11,11 @@ function makeInput(overrides: Partial<Parameters<typeof runBacktest>[0]> = {}) {
     rangeMin: 1.8,
     rangeMax: 2.2,
     feeTier: 0.003,
+    // Real-pool defaults (spec10 Fix 2): a ~$50M-TVL pool doing ~$20M/day.
+    // Fees are now 0 without these, so the default carries them; individual
+    // tests override to exercise the "unavailable" path.
+    poolTvlUsd: 50_000_000,
+    poolVolumePerStepUsd: 20_000_000,
     ...overrides,
   };
 }
@@ -74,6 +79,46 @@ describe("runBacktest", () => {
 
   it("throws if input arrays have mismatched lengths", () => {
     expect(() => runBacktest(makeInput({ pricesA: [100, 100] }))).toThrow();
+  });
+
+  it("grounds fees in real pool data: a $10k position in a ~$50M pool yields thousands, not billions", () => {
+    // 90 in-range steps at $20M/day pool volume, 0.3% fee tier. The old
+    // asset-volume proxy produced billions here; the pool-share model must not.
+    const n = 90;
+    const result = runBacktest(
+      makeInput({
+        pricesA: Array(n).fill(100),
+        pricesB: Array(n).fill(50),
+        volumesA: Array(n).fill(1000),
+        volumesB: Array(n).fill(800),
+        dates: Array.from({ length: n }, (_, i) => `d${i}`),
+        rangeMin: 1.8,
+        rangeMax: 2.2,
+        positionSizeUsd: 10_000,
+      })
+    );
+    expect(result.feeBasis).toBe("pool");
+    expect(result.timeInRangePct).toBe(1);
+    expect(result.feesEarnedUsd).toBeGreaterThan(0);
+    expect(result.feesEarnedUsd).toBeLessThan(1_000_000); // thousands, emphatically not billions
+    // The share is bounded by real pool TVL (position / (TVL + position),
+    // concentrated by range width) -- nowhere near the 0.5 cap.
+    expect(result.assumedPoolShareUsed).toBeLessThan(0.01);
+  });
+
+  it("reports feeBasis 'unavailable' and zero fees when no pool data is supplied", () => {
+    const result = runBacktest(makeInput({ poolTvlUsd: undefined, poolVolumePerStepUsd: undefined }));
+    expect(result.feeBasis).toBe("unavailable");
+    expect(result.feesEarnedUsd).toBe(0);
+    expect(result.assumedPoolShareUsed).toBe(0);
+    // Net P&L collapses to IL only -- never a fabricated fee figure.
+    expect(result.netPnlUsd).toBeCloseTo(result.ilEstimate * result.positionSizeUsd, 6);
+  });
+
+  it("reports feeBasis 'unavailable' when poolTvl is <= 0", () => {
+    const result = runBacktest(makeInput({ poolTvlUsd: 0 }));
+    expect(result.feeBasis).toBe("unavailable");
+    expect(result.feesEarnedUsd).toBe(0);
   });
 
   it("net P&L is the sum of fees earned and IL in dollar terms", () => {

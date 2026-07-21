@@ -25,6 +25,11 @@ export function fmtPct(v: number, digits = 1): string {
 
 export function BacktestResultsSummary({ result, note }: BacktestResultsSummaryProps) {
   const pnlPositive = result.netPnl >= 0;
+  // No real pool data for this pair -> fees can't be estimated honestly, so
+  // both fees and the net P&L that depends on them read "needs pool data"
+  // rather than a fabricated dollar figure (spec10 Fix 3). IL, time-in-range,
+  // and exits are computed from real price history and always shown.
+  const feesUnavailable = result.feeBasis === "unavailable";
 
   return (
     <section className="border border-line bg-bg-panel p-5 space-y-4">
@@ -45,16 +50,22 @@ export function BacktestResultsSummary({ result, note }: BacktestResultsSummaryP
         <div className="font-body text-[11px] uppercase tracking-wide text-ink-muted">
           Net P&amp;L — fees minus impermanent loss
         </div>
-        <div className={`font-mono text-3xl font-medium tabular-nums ${pnlPositive ? "text-pos" : "text-neg"}`}>
-          {fmtUsd(result.netPnl)}
-          <span className="text-lg ml-2">({fmtPct(result.netPnlPct)})</span>
-        </div>
+        {feesUnavailable ? (
+          <div className="font-mono text-2xl font-medium tabular-nums text-ink-muted italic">needs pool data</div>
+        ) : (
+          <div className={`font-mono text-3xl font-medium tabular-nums ${pnlPositive ? "text-pos" : "text-neg"}`}>
+            {fmtUsd(result.netPnl)}
+            <span className="text-lg ml-2">({fmtPct(result.netPnlPct)})</span>
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pt-1 border-t border-line">
         <div className="pt-3">
           <div className="font-body text-[11px] uppercase tracking-wide text-ink-muted">Fees earned (est.)</div>
-          <div className="font-mono text-lg text-ink tabular-nums">{fmtUsd(result.feesEarned)}</div>
+          <div className="font-mono text-lg text-ink tabular-nums">
+            {feesUnavailable ? <span className="text-ink-muted italic">needs pool data</span> : fmtUsd(result.feesEarned)}
+          </div>
         </div>
         <div className="pt-3">
           <div className="font-body text-[11px] uppercase tracking-wide text-ink-muted">Impermanent loss</div>
@@ -77,10 +88,22 @@ export function BacktestResultsSummary({ result, note }: BacktestResultsSummaryP
       )}
 
       <p className="font-body text-[11px] text-ink-muted leading-relaxed">
-        Time in range, exits, and IL are computed directly from real daily price history. Fee earnings
-        assume a {(result.assumedPoolShareUsed * 100).toFixed(1)}% share of pool volume (an estimate, not
-        v3 tick math) on a ${result.positionSizeUsd.toLocaleString()} position — treat fees and net P&amp;L
-        as directional for comparing ranges, not as a dollar prediction.
+        Time in range, exits, and IL are computed directly from real daily price history.{" "}
+        {feesUnavailable ? (
+          <>
+            Fees and net P&amp;L read “needs pool data” because this pair has no ingested pool TVL/volume to
+            ground a fee estimate — never a fabricated figure.
+          </>
+        ) : (
+          <>
+            Fee earnings are grounded in the pair's real pool: a $
+            {result.positionSizeUsd.toLocaleString()} position takes a{" "}
+            {(result.assumedPoolShareUsed * 100).toFixed(2)}% share of the pool (its capital over pool TVL,
+            concentrated by range width and capped by real liquidity) of each step's pool volume × fee tier.
+            Still an estimate, not v3 tick math — treat fees and net P&amp;L as directional for comparing ranges,
+            not as a dollar prediction.
+          </>
+        )}
       </p>
     </section>
   );
