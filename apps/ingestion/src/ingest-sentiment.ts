@@ -22,15 +22,36 @@ import { TRACKED_ASSETS } from "./config/assets.js";
 // (the series is one row per day, so this is trivially small).
 const TOPUP_DAYS = 7;
 
-// The symbols CFGI ingests, if its key is set: its market-wide index plus each
-// tracked asset for which a Fear & Greed reading is meaningful -- i.e. NOT the
-// stablecoins or tokenized gold (a peg has no fear/greed to measure). CFGI
-// silently skips any of these it doesn't track, so an over-broad list is safe.
+// The symbols CFGI ingests, if its key is set. CFGI meters credits and the
+// free balance is small, so this defaults to the MARKET-wide index ONLY (one
+// request/day) -- which is all any surface currently reads (the dashboard
+// chip's three-source cross-check). Per-token CFGI data isn't shown anywhere
+// yet (it feeds the not-yet-built per-token regime view), so paying credits to
+// accumulate it daily is deferred until that feature exists or the plan is
+// upgraded.
+//
+// CFGI_PER_TOKEN dials per-token back on without a code change:
+//   unset / ""      -> MARKET only (default, cheapest)
+//   "all"           -> MARKET + every tracked asset that isn't a stable/peg
+//   "BTC,ETH,SOL"   -> MARKET + exactly those tickers
+// A peg has no fear/greed to measure, so stablecoins and tokenized gold are
+// never auto-included by "all". CFGI silently skips any symbol it doesn't track.
 function cfgiSymbols(): string[] {
-  const perToken = TRACKED_ASSETS.filter((a) => a.class !== "stable" && a.class !== "commodity").map(
-    (a) => a.symbol
-  );
-  return [CFGI_MARKET_SYMBOL, ...perToken];
+  const setting = (process.env.CFGI_PER_TOKEN ?? "").trim();
+  if (!setting) return [CFGI_MARKET_SYMBOL];
+
+  if (setting.toLowerCase() === "all") {
+    const perToken = TRACKED_ASSETS.filter((a) => a.class !== "stable" && a.class !== "commodity").map(
+      (a) => a.symbol
+    );
+    return [CFGI_MARKET_SYMBOL, ...perToken];
+  }
+
+  const explicit = setting
+    .split(",")
+    .map((s) => s.trim().toUpperCase())
+    .filter((s) => s && s !== CFGI_MARKET_SYMBOL);
+  return [CFGI_MARKET_SYMBOL, ...explicit];
 }
 
 async function main() {

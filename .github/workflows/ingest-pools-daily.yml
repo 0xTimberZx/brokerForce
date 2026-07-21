@@ -83,8 +83,11 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           # Each source activates only when its key is present -- Alternative.me
           # is keyless and always runs; CoinMarketCap joins when CMC_API_KEY is
-          # set; CFGI (market-wide + per-token, forward-only) joins when
-          # CFGI_API_KEY is set.
+          # set; CFGI (forward-only) joins when CFGI_API_KEY is set. CFGI is
+          # credit-metered, so it defaults to the MARKET-wide index only (one
+          # request/day). To spend credits on per-token readings, set a repo
+          # variable CFGI_PER_TOKEN ("all" or a comma list like "BTC,ETH,SOL")
+          # and pass it here -- deliberately omitted by default to conserve.
           CMC_API_KEY: ${{ secrets.CMC_API_KEY }}
           CFGI_API_KEY: ${{ secrets.CFGI_API_KEY }}
         run: npm run ingest-sentiment
