@@ -45,11 +45,13 @@ export function LiquidityActivityPanel({ metrics }: LiquidityActivityPanelProps)
       <div className="pt-3 border-t border-line space-y-2">
         <div className="flex items-center justify-between">
           <span className="font-body text-sm text-ink-muted">TVL</span>
-          <span className="font-mono text-sm text-ink-muted italic">pending pool data†</span>
+          <span className="font-mono text-sm text-ink">{fmtVolume(v?.poolTvl ?? null)}</span>
         </div>
         <div className="flex items-center justify-between">
           <span className="font-body text-sm text-ink-muted">Volume / TVL ratio</span>
-          <span className="font-mono text-sm text-ink-muted italic">pending pool data†</span>
+          <span className="font-mono text-sm text-ink">
+            {v?.volumeTvlRatio != null ? `${v.volumeTvlRatio.toFixed(2)}×` : "—"}
+          </span>
         </div>
         <div className="flex items-center justify-between">
           <span className="font-body text-sm text-ink-muted">Pair popularity</span>
@@ -59,10 +61,9 @@ export function LiquidityActivityPanel({ metrics }: LiquidityActivityPanelProps)
 
       <p className="font-body text-[11px] text-ink-muted mt-3">
         * Pair-level volume is approximated as min(volume A, volume B) — the liquidity-constrained side, not real
-        pool-specific trading volume. † Real TVL, volume/TVL ratio, and pair popularity all need pool-level
-        data. Pool Explorer (<code className="font-mono">005</code>) is now built but pool ingestion isn't yet —
-        no real source is wired in, so Pool Explorer will show an "unavailable" state until you pick a data
-        source and implement it in <code className="font-mono">apps/api/src/services/poolSource.ts</code>.
+        pool-specific trading volume. TVL and volume/TVL ratio are now real, aggregated across the pair's pools.
+        † Pair popularity (swap counts, unique LPs) still awaits the deeper pool feed — those tick-/LP-level
+        figures aren't ingested by the current source.
       </p>
     </div>
   );

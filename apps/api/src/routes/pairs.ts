@@ -71,7 +71,7 @@ export function num(v: string | null): number | null {
   return v !== null ? Number(v) : null;
 }
 
-export function toPairMetrics(row: PairMetricsDbRow): PairMetrics {
+export function toPairMetrics(row: PairMetricsDbRow, poolTvl: number | null = null): PairMetrics {
   return {
     pairId: row.pair_id,
     window: row.window as CanonicalWindow,
@@ -91,15 +91,17 @@ export function toPairMetrics(row: PairMetricsDbRow): PairMetrics {
     avgTimeInRangeDays: num(row.avg_time_in_range_days),
     estimatedRebalancesPerYear: num(row.estimated_rebalances_per_year),
     ilEstimate: num(row.il_estimate),
-    // feeOpportunity, volumeTvlRatio, volumeShare, feeOpportunityScore are all
-    // still NULL at this point in the build -- apps/pair-engine never writes
-    // them (blocked on pool ingestion, see apps/pair-engine/README.md). Not
-    // computed here either; passed through as whatever the DB actually has.
+    // Pool-derived fields are now populated by apps/pair-engine from real,
+    // already-ingested pool data (spec10 Fix 1). Still NULL for a pair with no
+    // pools -- passed through as whatever the DB actually holds.
     feeOpportunity: num(row.fee_opportunity),
     volume: {
       avgVolume24h: num(row.avg_volume_24h),
       avgVolume7d: num(row.avg_volume_7d),
       avgVolume30d: num(row.avg_volume_30d),
+      // Aggregate Σ pools.tvl, joined in by the route (spec10 Fix 3) -- not a
+      // pair_metrics column, so it arrives as a separate argument.
+      poolTvl,
       volumeTvlRatio: num(row.volume_tvl_ratio),
       volumeTrend: num(row.volume_trend),
       volumeStability: num(row.volume_stability),
@@ -120,10 +122,17 @@ pairsRouter.get("/:assetA/:assetB", async (req, res) => {
     return;
   }
 
-  const metricsRows = await query<PairMetricsDbRow>(
-    `SELECT * FROM pair_metrics WHERE pair_id = $1 AND "window" = $2`,
-    [pair.id, window]
-  );
+  const [metricsRows, poolTvlRows] = await Promise.all([
+    query<PairMetricsDbRow>(`SELECT * FROM pair_metrics WHERE pair_id = $1 AND "window" = $2`, [pair.id, window]),
+    // Aggregate pool TVL for the pair (spec10 Fix 3). NULL (not 0) when the
+    // pair has no pools with a TVL -- SUM over zero rows is NULL, which is the
+    // honest "no pool data" state the panel renders as an em-dash.
+    query<{ pool_tvl: string | null }>(
+      `SELECT SUM(tvl) AS pool_tvl FROM pools WHERE pair_id = $1 AND tvl IS NOT NULL`,
+      [pair.id]
+    ),
+  ]);
+  const poolTvl = num(poolTvlRows[0]?.pool_tvl ?? null);
 
   const response: PairDetailResponse = {
     pairId: pair.id,
@@ -136,7 +145,7 @@ pairsRouter.get("/:assetA/:assetB", async (req, res) => {
     // aligned history -- see compute-metrics.ts's MIN_POINTS_FOR_STATS
     // skip). The pair existing and its metrics existing are different facts;
     // conflating them into one error would hide which one is actually true.
-    metrics: metricsRows[0] ? toPairMetrics(metricsRows[0]) : null,
+    metrics: metricsRows[0] ? toPairMetrics(metricsRows[0], poolTvl) : null,
   };
   res.json(response);
 });

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { GeckoTerminalPoolSource, parsePoolName, symbolsMatch } from "./geckoTerminalPoolSource.js";
+import { GeckoTerminalPoolSource, parseGtPoolId, parsePoolName, symbolsMatch } from "./geckoTerminalPoolSource.js";
 import { PoolSourceUnavailableError } from "./poolSource.js";
 
 function gtPool(
@@ -9,12 +9,15 @@ function gtPool(
     volumeH24?: string | null;
     dex?: string | null;
     network?: string | null;
+    id?: string;
+    address?: string;
   } = {}
 ) {
   return {
-    id: `net_0xabc`,
+    id: overrides.id ?? `net_0xabc`,
     attributes: {
       name,
+      ...(overrides.address !== undefined ? { address: overrides.address } : {}),
       reserve_in_usd: overrides.reserve === undefined ? "1000000" : overrides.reserve,
       volume_usd: { h24: overrides.volumeH24 === undefined ? "50000" : overrides.volumeH24 },
     },
@@ -44,6 +47,25 @@ describe("parsePoolName", () => {
 
   it("handles whole-number fees", () => {
     expect(parsePoolName("PEPE / WETH 1%")).toEqual({ symbols: ["PEPE", "WETH"], feeTier: 0.01 });
+  });
+});
+
+describe("parseGtPoolId", () => {
+  it("splits a '<network>_<address>' id on the first underscore", () => {
+    expect(parseGtPoolId("eth_0x88e6a0c2ddd26feeb64f039a2c41296fcb3f5640")).toEqual({
+      network: "eth",
+      address: "0x88e6a0c2ddd26feeb64f039a2c41296fcb3f5640",
+    });
+  });
+
+  it("keeps underscores that appear inside the address (splits on the FIRST only)", () => {
+    expect(parseGtPoolId("arbitrum_0xabc_def")).toEqual({ network: "arbitrum", address: "0xabc_def" });
+  });
+
+  it("returns nulls when the id has no underscore or an empty half", () => {
+    expect(parseGtPoolId("0xnoprefix")).toEqual({ network: null, address: null });
+    expect(parseGtPoolId("eth_")).toEqual({ network: "eth", address: null });
+    expect(parseGtPoolId("_0xabc")).toEqual({ network: null, address: "0xabc" });
   });
 });
 
@@ -99,6 +121,9 @@ describe("GeckoTerminalPoolSource", () => {
         tvl: 1_000_000,
         volume: 50_000,
         activeLiquidity: null,
+        // No attributes.address on the default fixture -> recovered from the
+        // address half of id "net_0xabc".
+        address: "0xabc",
       },
     ]);
   });
@@ -141,8 +166,11 @@ describe("GeckoTerminalPoolSource", () => {
     );
     const source = new GeckoTerminalPoolSource();
     const pools = await source.fetchPoolsForPair({ pairAssetA: "ETH", pairAssetB: "USDC" });
+    // dex stays "unknown" (no relationships.dex, and id doesn't encode it), but
+    // chain and address are recovered from id "eth_0xbare": network "eth",
+    // pool address "0xbare".
     expect(pools).toEqual([
-      { dex: "unknown", chain: "unknown", feeTier: 0.003, tvl: 500_000, volume: 10_000, activeLiquidity: null },
+      { dex: "unknown", chain: "eth", feeTier: 0.003, tvl: 500_000, volume: 10_000, activeLiquidity: null, address: "0xbare" },
     ]);
   });
 
@@ -161,6 +189,47 @@ describe("GeckoTerminalPoolSource", () => {
     const pools = await source.fetchPoolsForPair({ pairAssetA: "ETH", pairAssetB: "USDC" });
     expect(pools[0]?.tvl).toBeNull();
     expect(pools[0]?.volume).toBeNull();
+  });
+
+  it("populates address from attributes.address and prefers relationships for chain", async () => {
+    const poolAddr = "0x88e6a0c2ddd26feeb64f039a2c41296fcb3f5640";
+    vi.stubGlobal(
+      "fetch",
+      mockFetchResponse([gtPool("WETH / USDC 0.3%", { address: poolAddr, id: `eth_${poolAddr}` })])
+    );
+    const source = new GeckoTerminalPoolSource();
+    const pools = await source.fetchPoolsForPair({ pairAssetA: "ETH", pairAssetB: "USDC" });
+    expect(pools[0]?.address).toBe(poolAddr);
+    expect(pools[0]?.chain).toBe("eth");
+  });
+
+  it("falls the chain back to the id prefix when the relationships network is absent", async () => {
+    const poolAddr = "0x88e6a0c2ddd26feeb64f039a2c41296fcb3f5640";
+    // No relationships.network (network: null), id encodes the network. Chain
+    // must come from the id prefix ("arbitrum"), address from attributes.
+    vi.stubGlobal(
+      "fetch",
+      mockFetchResponse([
+        gtPool("WETH / USDC 0.3%", { network: null, address: poolAddr, id: `arbitrum_${poolAddr}` }),
+      ])
+    );
+    const source = new GeckoTerminalPoolSource();
+    const pools = await source.fetchPoolsForPair({ pairAssetA: "ETH", pairAssetB: "USDC" });
+    expect(pools[0]?.chain).toBe("arbitrum");
+    expect(pools[0]?.address).toBe(poolAddr);
+  });
+
+  it("does not churn a relationships-provided chain even when the id prefix differs", async () => {
+    // Guard the non-churn requirement: relationships says "eth", id says "base"
+    // -- the relationships value wins so already-correct rows stay put.
+    vi.stubGlobal(
+      "fetch",
+      mockFetchResponse([gtPool("WETH / USDC 0.3%", { network: "eth", id: "base_0xdeadbeef" })])
+    );
+    const source = new GeckoTerminalPoolSource();
+    const pools = await source.fetchPoolsForPair({ pairAssetA: "ETH", pairAssetB: "USDC" });
+    expect(pools[0]?.chain).toBe("eth");
+    expect(pools[0]?.address).toBe("0xdeadbeef");
   });
 
   it("throws PoolSourceUnavailableError on a non-OK response", async () => {

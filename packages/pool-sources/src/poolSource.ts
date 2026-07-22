@@ -32,6 +32,11 @@ export interface RawPoolData {
   swapCount7d?: number;
   uniqueLpCount?: number;
   activeLiquidityDistribution?: { priceTick: number; liquidity: number }[];
+  // The pool's own on-chain contract address (the DEX pool/pair contract),
+  // when the source provides it -- null when it doesn't. Distinct from the two
+  // token addresses below. Stored as pools.pool_address; it's the key a future
+  // Uniswap-v3 subgraph enrichment (pair popularity + tick liquidity) joins on.
+  address: string | null;
   // On-chain contract addresses of the pool's two tokens, when the source
   // provides them (DexScreener does). Used by ingestion's token-identity
   // verification to reject symbol-spoofed pools whose token isn't the real

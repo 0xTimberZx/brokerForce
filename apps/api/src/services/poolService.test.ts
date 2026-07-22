@@ -10,6 +10,7 @@ function makeRawPool(overrides: Partial<RawPoolData> = {}): RawPoolData {
     tvl: 1_000_000,
     volume: 50_000,
     activeLiquidity: 800_000,
+    address: null,
     ...overrides,
   };
 }

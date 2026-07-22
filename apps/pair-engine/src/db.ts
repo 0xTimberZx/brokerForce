@@ -1,5 +1,6 @@
 import { query } from "@brokerforce/db";
 import type { AssetClass, CanonicalWindow, PairTier } from "@brokerforce/types";
+import type { PoolAggregates } from "./pool-metrics.js";
 
 export interface AssetRow {
   symbol: string;
@@ -104,6 +105,47 @@ export async function fetchPriceHistory(
     .reverse(); // oldest first
 }
 
+/**
+ * Aggregates the pair's pool rows into the four figures poolMetricFields needs.
+ * The `pools` table already holds one current row per (pair_id,dex,chain,fee_tier)
+ * -- the latest snapshot -- so a straight aggregate over WHERE pair_id = $1 is
+ * "latest snapshot per pool" without any per-pool DISTINCT ON.
+ *
+ * Rows with NULL tvl OR NULL volume are skipped entirely (can't contribute to
+ * either sum honestly). Returns `null` when the pair has no usable pool rows,
+ * so callers write NULL -- not 0 -- for a pair with no pools.
+ *
+ * fee_tier is stored FRACTIONAL (0.003 = 0.3%; see pool-metrics.ts's UNIT
+ * NOTE), so SUM(volume * fee_tier) is directly USD/day.
+ */
+export async function fetchPoolAggregates(pairId: string): Promise<PoolAggregates | null> {
+  const rows = await query<{
+    pool_tvl: string | null;
+    pool_volume: string | null;
+    gross_daily_fees: string | null;
+    top_pool_volume: string | null;
+    n: string;
+  }>(
+    `SELECT
+       COALESCE(SUM(tvl), 0)              AS pool_tvl,
+       COALESCE(SUM(volume), 0)           AS pool_volume,
+       COALESCE(SUM(volume * fee_tier), 0) AS gross_daily_fees,
+       COALESCE(MAX(volume), 0)           AS top_pool_volume,
+       COUNT(*)                          AS n
+     FROM pools
+     WHERE pair_id = $1 AND tvl IS NOT NULL AND volume IS NOT NULL`,
+    [pairId]
+  );
+  const row = rows[0];
+  if (!row || Number(row.n) === 0) return null; // pair has no usable pool rows
+  return {
+    poolTvl: Number(row.pool_tvl),
+    poolVolume: Number(row.pool_volume),
+    grossDailyFees: Number(row.gross_daily_fees),
+    topPoolVolume: Number(row.top_pool_volume),
+  };
+}
+
 export interface PairMetricsRow {
   pairId: string;
   window: CanonicalWindow;
@@ -126,6 +168,13 @@ export interface PairMetricsRow {
   avgVolume30d: number | null;
   volumeTrend: number | null;
   volumeStability: number | null;
+  // Pool-derived fields (Fix 1 / spec10). Same values across all three windows
+  // -- they reflect the current pool snapshot, not a windowed series. NULL (not
+  // 0) for a pair that has no pools.
+  volumeTvlRatio: number | null;
+  feeOpportunity: number | null;
+  feeOpportunityScore: number | null;
+  volumeShare: number | null;
   confidence: "full" | "low";
 }
 
@@ -137,9 +186,11 @@ export async function upsertPairMetrics(row: PairMetricsRow): Promise<void> {
        range_stability_2pct, range_stability_5pct, range_stability_10pct, range_stability_15pct,
        avg_time_in_range_days, estimated_rebalances_per_year, il_estimate,
        avg_volume_24h, avg_volume_7d, avg_volume_30d, volume_trend, volume_stability,
+       volume_tvl_ratio, fee_opportunity, fee_opportunity_score, volume_share,
        confidence, computed_at
      ) VALUES (
-       $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, now()
+       $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21,
+       $22, $23, $24, $25, $26, now()
      )
      ON CONFLICT (pair_id, "window") DO UPDATE SET
        correlation = EXCLUDED.correlation,
@@ -161,6 +212,10 @@ export async function upsertPairMetrics(row: PairMetricsRow): Promise<void> {
        avg_volume_30d = EXCLUDED.avg_volume_30d,
        volume_trend = EXCLUDED.volume_trend,
        volume_stability = EXCLUDED.volume_stability,
+       volume_tvl_ratio = EXCLUDED.volume_tvl_ratio,
+       fee_opportunity = EXCLUDED.fee_opportunity,
+       fee_opportunity_score = EXCLUDED.fee_opportunity_score,
+       volume_share = EXCLUDED.volume_share,
        confidence = EXCLUDED.confidence,
        computed_at = now()`,
     [
@@ -185,6 +240,10 @@ export async function upsertPairMetrics(row: PairMetricsRow): Promise<void> {
       row.avgVolume30d,
       row.volumeTrend,
       row.volumeStability,
+      row.volumeTvlRatio,
+      row.feeOpportunity,
+      row.feeOpportunityScore,
+      row.volumeShare,
       row.confidence,
     ]
   );

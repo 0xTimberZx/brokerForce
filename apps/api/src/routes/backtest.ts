@@ -182,6 +182,28 @@ backtestRouter.post("/", async (req, res) => {
   }
 
   const feeTier = body.feeTier ?? 0.003; // 0.3%, a common default tier -- not from any spec'd source
+
+  // Pool selection (spec10 Fix 2): fees ride on the pair's REAL pool. Prefer
+  // the pool whose fee_tier matches the resolved tier (same fractional unit as
+  // feeTier -- see pool-sources parsePoolName); otherwise fall back to the
+  // pair's deepest (highest-TVL) pool. Rows with NULL tvl can't anchor a share,
+  // so they're excluded. No pool -> poolTvl stays undefined and the service
+  // returns feeBasis "unavailable".
+  const poolRows = await query<{ tvl: string | null; volume: string | null }>(
+    `SELECT tvl, volume FROM pools
+     WHERE pair_id = $1 AND tvl IS NOT NULL
+     ORDER BY (fee_tier = $2) DESC, tvl DESC
+     LIMIT 1`,
+    [pair.id, feeTier]
+  );
+  const pool = poolRows[0];
+  const poolTvlUsd = pool ? Number(pool.tvl) : undefined;
+  // Pool `volume` is 24h. Per daily step that IS the per-step volume; per hourly
+  // step it's /24 so the fee sum stays comparable across granularities.
+  const poolVolume24h = pool && pool.volume !== null ? Number(pool.volume) : undefined;
+  const poolVolumePerStepUsd =
+    poolVolume24h === undefined ? undefined : granularity === "hourly" ? poolVolume24h / 24 : poolVolume24h;
+
   const result = runBacktest({
     pricesA: aligned.map((a) => a.closeA),
     pricesB: aligned.map((a) => a.closeB),
@@ -192,6 +214,8 @@ backtestRouter.post("/", async (req, res) => {
     rangeMax: body.rangeMax,
     feeTier,
     positionSizeUsd: body.positionSizeUsd,
+    poolTvlUsd,
+    poolVolumePerStepUsd,
   });
 
   const insertRows = await query<{ id: string; created_at: string }>(
@@ -244,6 +268,7 @@ backtestRouter.post("/", async (req, res) => {
     positionSizeUsd: result.positionSizeUsd,
     dataGranularity: granularity,
     assumedPoolShareUsed: result.assumedPoolShareUsed,
+    feeBasis: result.feeBasis,
     createdAt: inserted.created_at,
   };
 
@@ -302,6 +327,10 @@ backtestRouter.get("/:simulationId", async (req, res) => {
     positionSizeUsd: Number(r.position_size_usd),
     dataGranularity: r.data_granularity,
     assumedPoolShareUsed: Number(r.assumed_pool_share_used),
+    // No DB column for feeBasis (no migration in spec10) -- infer it: a nonzero
+    // stored fee could only have come from the pool-based model, since the
+    // "unavailable" path always writes exactly 0.
+    feeBasis: Number(r.fees_earned) !== 0 ? "pool" : "unavailable",
     createdAt: r.created_at,
   };
 

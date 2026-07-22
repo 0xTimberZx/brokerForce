@@ -2,19 +2,27 @@
 // canonical windows (30d/90d/200d, per ORT.md §3) from the two assets'
 // price/volume history. Run AFTER generate-pairs.ts and ingestion.
 //
-// Several fields are deliberately left NULL here, not computed with a fake
-// placeholder value -- fee_opportunity, fee_opportunity_score,
-// volume_tvl_ratio, and volume_share all need real pool-level TVL/fee-tier
-// data that doesn't exist yet (pool ingestion is separate, later work per
-// apps/ingestion/README.md). Leaving them NULL is the honest choice; see
-// db.ts's upsertPairMetrics, which doesn't even include those columns in its
-// INSERT, rather than writing a 0 or a guessed value that could be mistaken
-// for a real measurement.
+// The four pool-derived fields -- fee_opportunity, fee_opportunity_score,
+// volume_tvl_ratio, and volume_share -- are now computed from real,
+// already-ingested pool data (Fix 1 / spec10). They reflect the CURRENT pool
+// snapshot (latest `pools` row per pool), so they're aggregated ONCE per pair
+// and written identically into all three window rows -- windowing them would
+// need a deeper `pool_history` than has accumulated yet (future work). A pair
+// with no pools gets NULL (not 0) for all four, so a real data gap is never
+// mistaken for a measured zero -- see pool-metrics.ts's poolMetricFields.
 
 import "dotenv/config";
 import { closePool } from "@brokerforce/db";
 import type { CanonicalWindow } from "@brokerforce/types";
-import { fetchActivePairs, fetchAllAssets, fetchPriceHistory, upsertPairMetrics, type PriceRow } from "./db.js";
+import {
+  fetchActivePairs,
+  fetchAllAssets,
+  fetchPoolAggregates,
+  fetchPriceHistory,
+  upsertPairMetrics,
+  type PriceRow,
+} from "./db.js";
+import { poolMetricFields, type PoolMetricFields } from "./pool-metrics.js";
 import {
   logReturns,
   pearsonCorrelation,
@@ -92,7 +100,8 @@ async function computeForPairAndWindow(
   fullHistoryA: PriceRow[],
   fullHistoryB: PriceRow[],
   supplyA: number | null,
-  supplyB: number | null
+  supplyB: number | null,
+  poolFields: PoolMetricFields
 ): Promise<void> {
   const { datesA, datesB } = alignByDate(fullHistoryA, fullHistoryB);
 
@@ -176,6 +185,11 @@ async function computeForPairAndWindow(
     avgVolume30d: volumeFields.avgVolume30d,
     volumeTrend: volumeFields.volumeTrend,
     volumeStability: volumeFields.volumeStability,
+    // Same pool snapshot values for every window -- see the header note.
+    volumeTvlRatio: poolFields.volumeTvlRatio,
+    feeOpportunity: poolFields.feeOpportunity,
+    feeOpportunityScore: poolFields.feeOpportunityScore,
+    volumeShare: poolFields.volumeShare,
     confidence,
   });
 }
@@ -210,6 +224,12 @@ async function main() {
     }
 
     console.log(`[${pair.assetA}/${pair.assetB}] (tier: ${pair.tier})`);
+
+    // Pool aggregates reflect the current snapshot, identical across windows --
+    // fetch and derive them once per pair, then write the same values into all
+    // three window rows (spec10 Fix 1). NULL for a pair with no pools.
+    const poolFields = poolMetricFields(await fetchPoolAggregates(pair.id));
+
     for (const window of CANONICAL_WINDOWS) {
       await computeForPairAndWindow(
         pair.id,
@@ -219,7 +239,8 @@ async function main() {
         historyA,
         historyB,
         supplyBySymbol.get(pair.assetA) ?? null,
-        supplyBySymbol.get(pair.assetB) ?? null
+        supplyBySymbol.get(pair.assetB) ?? null,
+        poolFields
       );
     }
   }

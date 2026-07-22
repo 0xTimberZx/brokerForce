@@ -9,8 +9,19 @@ interface FeeILPreviewProps {
   assetB: string;
 }
 
+/** Gross fees the pair's pools generate, per day. Same magnitude buckets as the
+ * volume formatter, suffixed "/day" -- feeOpportunity is a USD/day rate. */
+function fmtFeesPerDay(v: number | null): string {
+  if (v === null) return "—";
+  if (v >= 1e9) return `$${(v / 1e9).toFixed(2)}B/day`;
+  if (v >= 1e6) return `$${(v / 1e6).toFixed(1)}M/day`;
+  if (v >= 1e3) return `$${(v / 1e3).toFixed(1)}K/day`;
+  return `$${v.toFixed(0)}/day`;
+}
+
 export function FeeILPreview({ metrics, assetA, assetB }: FeeILPreviewProps) {
   const il = metrics?.ilEstimate ?? null;
+  const feeOpportunity = metrics?.feeOpportunity ?? null;
 
   return (
     <div className="border border-line bg-bg-panel p-4">
@@ -23,7 +34,7 @@ export function FeeILPreview({ metrics, assetA, assetB }: FeeILPreviewProps) {
         </div>
         <div>
           <div className="font-body text-xs text-ink-muted uppercase tracking-wide">Fee opportunity</div>
-          <div className="font-mono text-sm text-ink-muted italic">pending pool data*</div>
+          <div className="font-mono text-lg text-ink">{fmtFeesPerDay(feeOpportunity)}</div>
         </div>
       </div>
 
@@ -39,7 +50,8 @@ export function FeeILPreview({ metrics, assetA, assetB }: FeeILPreviewProps) {
 
       <p className="font-body text-[11px] text-ink-muted mt-2">
         IL estimate is the real, textbook constant-product-AMM formula — a single end-of-window point estimate,
-        not a day-by-day series. * Fee opportunity needs pool fee-tier and volume data that isn't ingested yet.
+        not a day-by-day series. Fee opportunity is the gross USD/day the pair's pools generate in fees
+        (Σ volume × fee tier), aggregated across the pair's pools.
       </p>
     </div>
   );

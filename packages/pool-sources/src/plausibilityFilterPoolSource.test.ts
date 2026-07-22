@@ -14,6 +14,7 @@ function pool(overrides: Partial<RawPoolData> = {}): RawPoolData {
     tvl: 1_000_000,
     volume: 500_000,
     activeLiquidity: null,
+    address: null,
     ...overrides,
   };
 }
