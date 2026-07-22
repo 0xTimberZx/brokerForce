@@ -22,7 +22,15 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      - name: Run subgraph probe
+      - name: Key presence (no value printed)
         env:
-          GRAPH_API_KEY: ${{ secrets.GRAPH_API_KEY }}
+          FROM_SECRET: ${{ secrets.GRAPH_API_KEY }}
+          FROM_VAR: ${{ vars.GRAPH_API_KEY }}
+        run: |
+          echo "secrets.GRAPH_API_KEY length: ${#FROM_SECRET}"
+          echo "vars.GRAPH_API_KEY length:    ${#FROM_VAR}"
+      - name: Run subgraph probe
+        # Tolerate the key living as either a repo secret or a repo variable.
+        env:
+          GRAPH_API_KEY: ${{ secrets.GRAPH_API_KEY || vars.GRAPH_API_KEY }}
         run: node scripts/subgraph-probe.mjs
