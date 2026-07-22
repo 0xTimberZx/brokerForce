@@ -39,8 +39,23 @@ describe("DexScreenerPoolSource", () => {
     const source = new DexScreenerPoolSource();
     const pools = await source.fetchPoolsForPair({ pairAssetA: "ETH", pairAssetB: "USDC" });
     expect(pools).toEqual([
-      { dex: "uniswap", chain: "ethereum", feeTier: 0.003, tvl: 1_000_000, volume: 50_000, activeLiquidity: null },
+      { dex: "uniswap", chain: "ethereum", feeTier: 0.003, tvl: 1_000_000, volume: 50_000, activeLiquidity: null, address: null },
     ]);
+  });
+
+  it("populates address from the pair's pairAddress", async () => {
+    const poolAddr = "0x88e6a0c2ddd26feeb64f039a2c41296fcb3f5640";
+    vi.stubGlobal("fetch", mockFetch([dsPair("WETH", "USDC", { pairAddress: poolAddr })]));
+    const source = new DexScreenerPoolSource();
+    const pools = await source.fetchPoolsForPair({ pairAssetA: "ETH", pairAssetB: "USDC" });
+    expect(pools[0]?.address).toBe(poolAddr);
+  });
+
+  it("leaves address null when the pair carries no pairAddress", async () => {
+    vi.stubGlobal("fetch", mockFetch([dsPair("WETH", "USDC")]));
+    const source = new DexScreenerPoolSource();
+    const pools = await source.fetchPoolsForPair({ pairAssetA: "ETH", pairAssetB: "USDC" });
+    expect(pools[0]?.address).toBeNull();
   });
 
   it("filters out non-matching pairs and honors reversed order", async () => {
@@ -72,7 +87,7 @@ describe("DexScreenerPoolSource", () => {
     vi.stubGlobal("fetch", mockFetch([{ baseToken: { symbol: "WETH" }, quoteToken: { symbol: "USDC" } }]));
     const pools = await source.fetchPoolsForPair({ pairAssetA: "ETH", pairAssetB: "USDC" });
     expect(pools).toEqual([
-      { dex: "unknown", chain: "unknown", feeTier: 0, tvl: null, volume: null, activeLiquidity: null },
+      { dex: "unknown", chain: "unknown", feeTier: 0, tvl: null, volume: null, activeLiquidity: null, address: null },
     ]);
   });
 
@@ -97,7 +112,7 @@ class StubSource implements PoolSource {
     this.calls++;
     if (this.behavior === "unavailable") throw new PoolSourceUnavailableError("stub down");
     if (this.behavior === "bug") throw new TypeError("stub bug");
-    return [{ dex: "stub", chain: "stub", feeTier: 0, tvl: 1, volume: 1, activeLiquidity: null }];
+    return [{ dex: "stub", chain: "stub", feeTier: 0, tvl: 1, volume: 1, activeLiquidity: null, address: null }];
   }
 }
 

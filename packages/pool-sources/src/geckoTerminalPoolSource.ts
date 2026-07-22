@@ -34,6 +34,10 @@ interface GtPoolItem {
   id: string;
   attributes: {
     name: string;
+    // The pool's on-chain contract address. GeckoTerminal usually returns it,
+    // but it's typed optional since the search response isn't guaranteed to
+    // carry it on every item -- when absent we recover it from `id` (below).
+    address?: string;
     reserve_in_usd: string | null;
     volume_usd?: { h24: string | null };
   };
@@ -88,6 +92,20 @@ function toNumberOrNull(v: string | null | undefined): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+/** GeckoTerminal's `item.id` encodes the network and pool contract address as
+ * "<network>_<0xaddress>" (e.g. "eth_0x88e6..."). Splitting on the FIRST "_"
+ * lets us recover both when the structured fields are missing: the network
+ * backs the chain fallback (only used when relationships omit it), the address
+ * backs the pool_address fallback. Returns nulls when the id has no "_" (or an
+ * empty half) rather than guessing. */
+export function parseGtPoolId(id: string): { network: string | null; address: string | null } {
+  const sep = id.indexOf("_");
+  if (sep < 0) return { network: null, address: null };
+  const network = id.slice(0, sep);
+  const address = id.slice(sep + 1);
+  return { network: network || null, address: address || null };
+}
+
 export class GeckoTerminalPoolSource implements PoolSource {
   constructor(private baseUrl: string = GECKOTERMINAL_BASE) {}
 
@@ -134,13 +152,20 @@ export class GeckoTerminalPoolSource implements PoolSource {
           (symbolsMatch(symbols[0] ?? "", query.pairAssetB) && symbolsMatch(symbols[1] ?? "", query.pairAssetA)));
       if (!isThisPair) continue;
 
+      const fromId = parseGtPoolId(item.id);
       pools.push({
         dex: item.relationships?.dex?.data?.id ?? "unknown",
-        chain: item.relationships?.network?.data?.id ?? "unknown",
+        // Keep the relationships-derived network when present (don't churn
+        // already-correct rows); only when it's absent do we fall back to the
+        // network prefix encoded in item.id ("eth_0x..." -> "eth").
+        chain: item.relationships?.network?.data?.id ?? fromId.network ?? "unknown",
         feeTier,
         tvl: toNumberOrNull(item.attributes.reserve_in_usd),
         volume: toNumberOrNull(item.attributes.volume_usd?.h24),
         activeLiquidity: null, // not exposed by GeckoTerminal -- see header
+        // Pool contract address: the structured field when present, otherwise
+        // the address half of item.id ("eth_0xabc" -> "0xabc").
+        address: item.attributes.address ?? fromId.address ?? null,
       });
       if (pools.length >= MAX_POOLS) break;
     }

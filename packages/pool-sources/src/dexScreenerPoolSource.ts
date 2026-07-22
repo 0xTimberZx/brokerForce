@@ -30,6 +30,8 @@ const MAX_POOLS = 20;
 interface DsPair {
   chainId?: string;
   dexId?: string;
+  // The pool's on-chain contract address (DexScreener's pair contract).
+  pairAddress?: string;
   labels?: string[];
   baseToken?: { symbol?: string; address?: string };
   quoteToken?: { symbol?: string; address?: string };
@@ -99,6 +101,8 @@ export class DexScreenerPoolSource implements PoolSource {
         tvl: toFiniteOrNull(pair.liquidity?.usd),
         volume: toFiniteOrNull(pair.volume?.h24),
         activeLiquidity: null, // not exposed by DexScreener -- see header
+        // Pool contract address -- the future subgraph-enrichment join key.
+        address: pair.pairAddress ?? null,
         // Token contract addresses back ingestion's identity verification.
         baseTokenAddress: pair.baseToken?.address?.toLowerCase(),
         quoteTokenAddress: pair.quoteToken?.address?.toLowerCase(),
