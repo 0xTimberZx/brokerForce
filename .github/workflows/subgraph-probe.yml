@@ -1,0 +1,28 @@
+name: Subgraph Probe (temporary)
+
+# TEMPORARY: spec 012 discovery probe. Confirms Uniswap-v3 subgraph deployment
+# IDs + schema shape from a runner with open egress and the GRAPH_API_KEY
+# secret. Deleted before the real feature PR.
+
+# push-triggered (scoped to this feature branch) because a workflow_dispatch
+# probe would only be dispatchable once its file lived on the default branch.
+on:
+  push:
+    branches: [claude/pull-repo-wqv385]
+    paths:
+      - ".github/workflows/subgraph-probe.yml"
+      - "scripts/subgraph-probe.mjs"
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Run subgraph probe
+        env:
+          GRAPH_API_KEY: ${{ secrets.GRAPH_API_KEY }}
+        run: node scripts/subgraph-probe.mjs
