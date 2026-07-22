@@ -146,13 +146,13 @@ run `enrich-pools-subgraph` against a captured/mocked subgraph response → asse
 three columns update to expected shapes; drop the key → assert clean no-op;
 screenshot `PoolDetailPanel` distribution chart + `LiquidityActivityPanel` popularity.
 
-## Open decision (needs your call)
-**`unique_lp_count`.** The subgraph does not reliably provide it (the built-in
-counter is left at 0; a true count needs expensive position pagination). Options:
-- **(A) Defer it** — keep the column NULL, scope "popularity" to swap activity,
-  and word the UI as trading activity, not LP counts. *(Recommended — honest, cheap.)*
-- **(B) Approximate it** — paginate open positions per pool to count distinct
-  owners. More queries, more code, and still imprecise (NFT positions ≠ unique humans).
+## Decision — `unique_lp_count` DEFERRED (settled 2026-07-22)
+The subgraph does not reliably provide it (the built-in counter is left at 0; a
+true count needs expensive, imprecise position pagination). **Decision: defer.**
+The `unique_lp_count` column stays NULL, "popularity" is scoped to **swap
+activity** (trading busy-ness), and the UI is worded as trading activity — never
+implying an LP-count we don't measure. Approximating it via position pagination
+is out of scope for this feature; revisit only if a strong need appears.
 
 ## Out of scope (still later)
 - v3 tick-level **fee math** in the backtest (this is distribution *display*, not
