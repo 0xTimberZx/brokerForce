@@ -110,22 +110,42 @@ describe("GeckoTerminalPoolSource", () => {
   });
 
   it("maps a matching pool onto RawPoolData", async () => {
-    vi.stubGlobal("fetch", mockFetchResponse([gtPool("WETH / USDC 0.3%")]));
+    const poolAddr = "0x88e6a0c2ddd26feeb64f039a2c41296fcb3f5640"; // valid 40-hex EVM address
+    vi.stubGlobal("fetch", mockFetchResponse([gtPool("WETH / USDC 0.3%", { id: `eth_${poolAddr}` })]));
     const source = new GeckoTerminalPoolSource();
     const pools = await source.fetchPoolsForPair({ pairAssetA: "ETH", pairAssetB: "USDC" });
     expect(pools).toEqual([
       {
         dex: "uniswap_v3",
-        chain: "eth",
+        // "eth" (relationships network) folds to canonical "ethereum".
+        chain: "ethereum",
+        // version parsed from the dex id "uniswap_v3".
+        version: "v3",
         feeTier: 0.003,
         tvl: 1_000_000,
         volume: 50_000,
         activeLiquidity: null,
-        // No attributes.address on the default fixture -> recovered from the
-        // address half of id "net_0xabc".
-        address: "0xabc",
+        // No attributes.address on the fixture -> recovered from the address
+        // half of id "eth_0x88e6...", and it passes EVM validation.
+        address: poolAddr,
       },
     ]);
+  });
+
+  it("nulls a malformed EVM address (64-hex v4 poolId) but keeps the version", async () => {
+    // A Uniswap-v4 pool arrives with a 64-hex bytes32 id in the address slot --
+    // not a real 20-byte EVM address. It must be nulled on an EVM chain, while
+    // the version identity ("v4", from the dex id) is still captured.
+    const v4PoolId = "0x" + "b".repeat(64);
+    vi.stubGlobal(
+      "fetch",
+      mockFetchResponse([
+        gtPool("WETH / USDC 0.3%", { dex: "uniswap-v4-ethereum", address: v4PoolId, id: `eth_${v4PoolId}` }),
+      ])
+    );
+    const source = new GeckoTerminalPoolSource();
+    const pools = await source.fetchPoolsForPair({ pairAssetA: "ETH", pairAssetB: "USDC" });
+    expect(pools[0]).toMatchObject({ chain: "ethereum", version: "v4", address: null });
   });
 
   it("filters out fuzzy search hits that are not this pair", async () => {
@@ -166,11 +186,12 @@ describe("GeckoTerminalPoolSource", () => {
     );
     const source = new GeckoTerminalPoolSource();
     const pools = await source.fetchPoolsForPair({ pairAssetA: "ETH", pairAssetB: "USDC" });
-    // dex stays "unknown" (no relationships.dex, and id doesn't encode it), but
-    // chain and address are recovered from id "eth_0xbare": network "eth",
-    // pool address "0xbare".
+    // dex stays "unknown" (no relationships.dex, and id doesn't encode it), so
+    // version is null too. Chain is recovered from id "eth_0xbare" and folds to
+    // canonical "ethereum"; the "0xbare" address half is not a valid 40-hex EVM
+    // address, so validation nulls it.
     expect(pools).toEqual([
-      { dex: "unknown", chain: "eth", feeTier: 0.003, tvl: 500_000, volume: 10_000, activeLiquidity: null, address: "0xbare" },
+      { dex: "unknown", chain: "ethereum", version: null, feeTier: 0.003, tvl: 500_000, volume: 10_000, activeLiquidity: null, address: null },
     ]);
   });
 
@@ -200,7 +221,8 @@ describe("GeckoTerminalPoolSource", () => {
     const source = new GeckoTerminalPoolSource();
     const pools = await source.fetchPoolsForPair({ pairAssetA: "ETH", pairAssetB: "USDC" });
     expect(pools[0]?.address).toBe(poolAddr);
-    expect(pools[0]?.chain).toBe("eth");
+    // "eth" from relationships folds to canonical "ethereum".
+    expect(pools[0]?.chain).toBe("ethereum");
   });
 
   it("falls the chain back to the id prefix when the relationships network is absent", async () => {
@@ -221,15 +243,17 @@ describe("GeckoTerminalPoolSource", () => {
 
   it("does not churn a relationships-provided chain even when the id prefix differs", async () => {
     // Guard the non-churn requirement: relationships says "eth", id says "base"
-    // -- the relationships value wins so already-correct rows stay put.
+    // -- the relationships value wins so already-correct rows stay put. ("eth"
+    // then folds to canonical "ethereum".)
+    const poolAddr = "0x88e6a0c2ddd26feeb64f039a2c41296fcb3f5640";
     vi.stubGlobal(
       "fetch",
-      mockFetchResponse([gtPool("WETH / USDC 0.3%", { network: "eth", id: "base_0xdeadbeef" })])
+      mockFetchResponse([gtPool("WETH / USDC 0.3%", { network: "eth", id: `base_${poolAddr}` })])
     );
     const source = new GeckoTerminalPoolSource();
     const pools = await source.fetchPoolsForPair({ pairAssetA: "ETH", pairAssetB: "USDC" });
-    expect(pools[0]?.chain).toBe("eth");
-    expect(pools[0]?.address).toBe("0xdeadbeef");
+    expect(pools[0]?.chain).toBe("ethereum");
+    expect(pools[0]?.address).toBe(poolAddr);
   });
 
   it("throws PoolSourceUnavailableError on a non-OK response", async () => {

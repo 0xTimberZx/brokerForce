@@ -6,6 +6,7 @@ function makeRawPool(overrides: Partial<RawPoolData> = {}): RawPoolData {
   return {
     dex: "uniswap-v3",
     chain: "ethereum",
+    version: "v3",
     feeTier: 0.003,
     tvl: 1_000_000,
     volume: 50_000,

@@ -21,6 +21,7 @@
 
 import type { PoolSource, PoolQuery, RawPoolData } from "./poolSource.js";
 import { PoolSourceUnavailableError } from "./poolSource.js";
+import { canonicalChain, versionFromDexId, validatePoolAddress } from "./normalize.js";
 
 const GECKOTERMINAL_BASE = "https://api.geckoterminal.com/api/v2";
 const REQUEST_TIMEOUT_MS = 5_000; // per PoolSource's contract / spec5.md
@@ -153,19 +154,28 @@ export class GeckoTerminalPoolSource implements PoolSource {
       if (!isThisPair) continue;
 
       const fromId = parseGtPoolId(item.id);
+      const dexId = item.relationships?.dex?.data?.id ?? "unknown";
+      // Keep the relationships-derived network when present (don't churn
+      // already-correct rows); only when it's absent do we fall back to the
+      // network prefix encoded in item.id ("eth_0x..." -> "eth"). Canonicalize
+      // the result so "eth" / "arbitrum_one" fold onto one chain name.
+      const chain = canonicalChain(
+        item.relationships?.network?.data?.id ?? fromId.network ?? "unknown"
+      );
       pools.push({
-        dex: item.relationships?.dex?.data?.id ?? "unknown",
-        // Keep the relationships-derived network when present (don't churn
-        // already-correct rows); only when it's absent do we fall back to the
-        // network prefix encoded in item.id ("eth_0x..." -> "eth").
-        chain: item.relationships?.network?.data?.id ?? fromId.network ?? "unknown",
+        dex: dexId,
+        chain,
+        // AMM version parsed from the dex id ("uniswap_v3" -> "v3"); null when
+        // the id carries none (plain "uniswap", or the "unknown" fallback).
+        version: versionFromDexId(dexId),
         feeTier,
         tvl: toNumberOrNull(item.attributes.reserve_in_usd),
         volume: toNumberOrNull(item.attributes.volume_usd?.h24),
         activeLiquidity: null, // not exposed by GeckoTerminal -- see header
         // Pool contract address: the structured field when present, otherwise
-        // the address half of item.id ("eth_0xabc" -> "0xabc").
-        address: item.attributes.address ?? fromId.address ?? null,
+        // the address half of item.id ("eth_0xabc" -> "0xabc"). Chain-aware
+        // validation nulls malformed (e.g. 64-hex v4) EVM addresses.
+        address: validatePoolAddress(item.attributes.address ?? fromId.address, chain),
       });
       if (pools.length >= MAX_POOLS) break;
     }
