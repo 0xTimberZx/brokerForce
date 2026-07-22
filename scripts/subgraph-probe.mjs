@@ -45,25 +45,22 @@ async function gql(url, query, variables) {
 
 const META = `{ _meta { block { number } deployment } }`;
 
+// poolDayDatas is a TOP-LEVEL entity (filtered by pool), NOT a nested field on
+// Pool -- the first probe proved `Type Pool has no field poolDayDatas`. Ticks
+// and liquidityProviderCount ARE on Pool. One request, two roots.
 const POOL_QUERY = `
-query Pool($id: ID!) {
+query Pool($id: ID!, $addr: String!) {
   pool(id: $id) {
     id
     feeTier
     liquidity
     tick
-    sqrtPrice
     token0Price
     token1Price
     txCount
     liquidityProviderCount
     totalValueLockedUSD
     volumeUSD
-    poolDayData: poolDayDatas(first: 7, orderBy: date, orderDirection: desc) {
-      date
-      txCount
-      volumeUSD
-    }
     ticksNearby: ticks(first: 8, orderBy: liquidityGross, orderDirection: desc) {
       tickIdx
       liquidityGross
@@ -71,6 +68,11 @@ query Pool($id: ID!) {
       price0
       price1
     }
+  }
+  poolDayDatas(first: 7, orderBy: date, orderDirection: desc, where: { pool: $addr }) {
+    date
+    txCount
+    volumeUSD
   }
 }`;
 
@@ -85,7 +87,7 @@ for (const { chain, id, pool } of CHAINS) {
     }
     console.log(`  _meta OK  block=${meta.data._meta.block.number}  deployment=${meta.data._meta.deployment}`);
 
-    const r = await gql(url, POOL_QUERY, { id: pool });
+    const r = await gql(url, POOL_QUERY, { id: pool, addr: pool });
     if (r.errors) {
       console.log(`  pool query errors: ${JSON.stringify(r.errors)}`);
       continue;
@@ -97,8 +99,9 @@ for (const { chain, id, pool } of CHAINS) {
     }
     console.log(`  pool ${p.id}  fee=${p.feeTier}  tick=${p.tick}  txCount(cumulative)=${p.txCount}`);
     console.log(`  liquidityProviderCount=${p.liquidityProviderCount}  (0 confirms unique_lp defer)`);
-    console.log(`  poolDayDatas[7] (date / txCount / volUSD):`);
-    for (const d of p.poolDayData || []) {
+    const dd = r.data?.poolDayDatas || [];
+    console.log(`  poolDayDatas[${dd.length}] (date / txCount / volUSD):`);
+    for (const d of dd) {
       console.log(`    ${new Date(d.date * 1000).toISOString().slice(0, 10)}  txCount=${d.txCount}  vol=$${Math.round(Number(d.volumeUSD))}`);
     }
     console.log(`  ticks (top 8 by liquidityGross): tickIdx / liquidityGross / price0`);
