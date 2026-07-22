@@ -38,9 +38,29 @@ describe("DexScreenerPoolSource", () => {
     vi.stubGlobal("fetch", mockFetch([dsPair("WETH", "USDC")]));
     const source = new DexScreenerPoolSource();
     const pools = await source.fetchPoolsForPair({ pairAssetA: "ETH", pairAssetB: "USDC" });
+    // version comes from the "v3" label; chain is already canonical; no
+    // pairAddress on the fixture -> address null.
     expect(pools).toEqual([
-      { dex: "uniswap", chain: "ethereum", feeTier: 0.003, tvl: 1_000_000, volume: 50_000, activeLiquidity: null, address: null },
+      { dex: "uniswap", chain: "ethereum", version: "v3", feeTier: 0.003, tvl: 1_000_000, volume: 50_000, activeLiquidity: null, address: null },
     ]);
+  });
+
+  it("normalizes the chain and validates the address (nulls a 64-hex v4 poolId on EVM)", async () => {
+    const validEvm = "0x88e6a0c2ddd26feeb64f039a2c41296fcb3f5640"; // 40 hex
+    const v4PoolId = "0x" + "a".repeat(64); // 64-hex bytes32 -> not an EVM address
+    vi.stubGlobal(
+      "fetch",
+      mockFetch([
+        dsPair("WETH", "USDC", { chainId: "eth", labels: ["v3", "0.3%"], pairAddress: validEvm }),
+        dsPair("WETH", "USDC", { chainId: "ethereum", labels: ["v4"], pairAddress: v4PoolId }),
+      ])
+    );
+    const source = new DexScreenerPoolSource();
+    const pools = await source.fetchPoolsForPair({ pairAssetA: "ETH", pairAssetB: "USDC" });
+    // "eth" folds to canonical "ethereum"; valid 40-hex address kept; v3 label.
+    expect(pools[0]).toMatchObject({ chain: "ethereum", version: "v3", address: validEvm });
+    // v4 bytes32 poolId is malformed as an EVM address -> nulled; version still v4.
+    expect(pools[1]).toMatchObject({ chain: "ethereum", version: "v4", address: null });
   });
 
   it("populates address from the pair's pairAddress", async () => {
@@ -87,7 +107,7 @@ describe("DexScreenerPoolSource", () => {
     vi.stubGlobal("fetch", mockFetch([{ baseToken: { symbol: "WETH" }, quoteToken: { symbol: "USDC" } }]));
     const pools = await source.fetchPoolsForPair({ pairAssetA: "ETH", pairAssetB: "USDC" });
     expect(pools).toEqual([
-      { dex: "unknown", chain: "unknown", feeTier: 0, tvl: null, volume: null, activeLiquidity: null, address: null },
+      { dex: "unknown", chain: "unknown", version: null, feeTier: 0, tvl: null, volume: null, activeLiquidity: null, address: null },
     ]);
   });
 
@@ -112,7 +132,7 @@ class StubSource implements PoolSource {
     this.calls++;
     if (this.behavior === "unavailable") throw new PoolSourceUnavailableError("stub down");
     if (this.behavior === "bug") throw new TypeError("stub bug");
-    return [{ dex: "stub", chain: "stub", feeTier: 0, tvl: 1, volume: 1, activeLiquidity: null, address: null }];
+    return [{ dex: "stub", chain: "stub", version: null, feeTier: 0, tvl: 1, volume: 1, activeLiquidity: null, address: null }];
   }
 }
 

@@ -94,16 +94,17 @@ async function loadContractRegistry(): Promise<ContractRegistry> {
 
 async function upsertPoolWithSnapshot(pairId: string, raw: RawPoolData): Promise<void> {
   const rows = await query<{ id: string }>(
-    `INSERT INTO pools (pair_id, dex, chain, fee_tier, tvl, volume, active_liquidity, pool_address, updated_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, now())
+    `INSERT INTO pools (pair_id, dex, chain, fee_tier, tvl, volume, active_liquidity, pool_address, pool_version, updated_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, now())
      ON CONFLICT (pair_id, dex, chain, fee_tier) DO UPDATE SET
        tvl = EXCLUDED.tvl,
        volume = EXCLUDED.volume,
        active_liquidity = EXCLUDED.active_liquidity,
        pool_address = EXCLUDED.pool_address,
+       pool_version = EXCLUDED.pool_version,
        updated_at = now()
      RETURNING id`,
-    [pairId, raw.dex, raw.chain, raw.feeTier, raw.tvl, raw.volume, raw.activeLiquidity, raw.address]
+    [pairId, raw.dex, raw.chain, raw.feeTier, raw.tvl, raw.volume, raw.activeLiquidity, raw.address, raw.version]
   );
   const pool = rows[0];
   if (!pool) {

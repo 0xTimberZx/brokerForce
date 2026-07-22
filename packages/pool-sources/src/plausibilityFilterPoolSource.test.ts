@@ -10,6 +10,7 @@ function pool(overrides: Partial<RawPoolData> = {}): RawPoolData {
   return {
     dex: "uniswap",
     chain: "ethereum",
+    version: null,
     feeTier: 0.003,
     tvl: 1_000_000,
     volume: 500_000,

@@ -22,6 +22,7 @@
 import type { PoolSource, PoolQuery, RawPoolData } from "./poolSource.js";
 import { PoolSourceUnavailableError } from "./poolSource.js";
 import { symbolsMatch } from "./geckoTerminalPoolSource.js";
+import { canonicalChain, versionFromLabels, validatePoolAddress } from "./normalize.js";
 
 const DEXSCREENER_BASE = "https://api.dexscreener.com";
 const REQUEST_TIMEOUT_MS = 5_000; // per PoolSource's contract / spec5.md
@@ -94,15 +95,19 @@ export class DexScreenerPoolSource implements PoolSource {
       // provided (poolService.applyFilters also enforces it downstream).
       if (query.chain && pair.chainId !== query.chain) continue;
 
+      const chain = canonicalChain(pair.chainId);
       pools.push({
         dex: pair.dexId ?? "unknown",
-        chain: pair.chainId ?? "unknown",
+        chain,
+        // AMM version from the labels ("v3" in ["v3", "0.3%"]); null otherwise.
+        version: versionFromLabels(pair.labels),
         feeTier: feeTierFromLabels(pair.labels),
         tvl: toFiniteOrNull(pair.liquidity?.usd),
         volume: toFiniteOrNull(pair.volume?.h24),
         activeLiquidity: null, // not exposed by DexScreener -- see header
         // Pool contract address -- the future subgraph-enrichment join key.
-        address: pair.pairAddress ?? null,
+        // Chain-aware validation nulls malformed (e.g. 64-hex v4) EVM addresses.
+        address: validatePoolAddress(pair.pairAddress, chain),
         // Token contract addresses back ingestion's identity verification.
         baseTokenAddress: pair.baseToken?.address?.toLowerCase(),
         quoteTokenAddress: pair.quoteToken?.address?.toLowerCase(),

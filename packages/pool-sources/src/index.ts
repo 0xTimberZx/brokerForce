@@ -12,6 +12,12 @@ export {
 } from "./poolSource.js";
 export { GeckoTerminalPoolSource, parsePoolName, symbolsMatch } from "./geckoTerminalPoolSource.js";
 export { DexScreenerPoolSource, feeTierFromLabels } from "./dexScreenerPoolSource.js";
+export {
+  canonicalChain,
+  versionFromLabels,
+  versionFromDexId,
+  validatePoolAddress,
+} from "./normalize.js";
 export { FallbackPoolSource } from "./fallbackPoolSource.js";
 export {
   PlausibilityFilterPoolSource,

@@ -25,6 +25,12 @@ export interface PoolQuery {
 export interface RawPoolData {
   dex: string;
   chain: string;
+  // The AMM version -- "v2" | "v3" | "v4" -- when the source lets us identify
+  // it (DexScreener labels / GeckoTerminal dex id), else null. This is version
+  // IDENTITY only: it makes the concentrated-liquidity (v3) cohort queryable,
+  // but the exact fee tier and tick-level data of a v3 pool still need the
+  // subgraph -- capturing the version here does not derive either.
+  version: string | null;
   feeTier: number;
   tvl: number | null;
   volume: number | null;
