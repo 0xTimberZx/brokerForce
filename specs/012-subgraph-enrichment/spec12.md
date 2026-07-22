@@ -1,10 +1,40 @@
 # 012 — Uniswap-v3 Subgraph Enrichment (active liquidity + popularity)
 
-> **Status: DRAFT for review 2026-07-22.** This is "Option 2" from spec 010,
-> now unblocked by the clean v3 identification + validated addresses that
-> spec 011 shipped. It fills the three `pools` columns that have existed since
-> migration 001 but no source ever populated:
-> `active_liquidity_distribution`, `swap_count_7d`, `unique_lp_count`.
+> **Status: Approved-to-build 2026-07-22** (probe-verified). This is "Option 2"
+> from spec 010, now unblocked by the clean v3 identification + validated
+> addresses that spec 011 shipped. It fills the `pools` columns that have existed
+> since migration 001 but no source ever populated:
+> `active_liquidity_distribution`, `swap_count_7d` (and `unique_lp_count`,
+> deferred — see below).
+
+## Discovery-probe results (verified 2026-07-22 on a CI runner)
+A throwaway probe hit the live Graph decentralized-network gateway with the real
+`GRAPH_API_KEY` and settled every open question:
+
+- **Deployment IDs that resolve** (Uniswap-v3, `gateway.thegraph.com/api/{key}/subgraphs/id/{ID}`):
+  | chain | subgraph deployment ID |
+  |---|---|
+  | ethereum | `5zvR82QoaXYFyDEKLZ9t6v9adgnptxYpKpSbxtgVENFV` |
+  | arbitrum | `FbCGRftH4a3yZugY7TnbYgPJVEv2LvMT6oF1fxPe9aJM` |
+  | polygon | `3hCPRGf4z88VC5rsBKU5AA9FBBq5nF3jbKJG7VZCbhjm` |
+  | base | `43Hwfi3dJSoGpyas9VwNoDAv55yjgGrPpNSmbQZArzMG` |
+  | bsc | `F85MNzUGYqgSHSHRGgeVMNsdnW1KtZSVgFULumXRZTw2` |
+  - **optimism** (`Cghf4LfVqPiFw6fp6Y5X5Ubc8UpmUhSfJL82zwiBFLaj`) returned
+    `bad indexers: too far behind / no attestation / indexer not available` on
+    repeated tries — the deployment is unhealthy on the network. **Omitted from
+    v1**; a healthy Optimism ID is a later add (the step skips unmapped chains).
+- **`swap_count_7d` is first-class, not best-effort.** `poolDayDatas(first: 7,
+  orderBy: date, desc, where: {pool: <addr>})` returns **per-day** `txCount` +
+  `volumeUSD` (verified varying, not cumulative). `swap_count_7d = Σ txCount over
+  the 7 rows`. NB `poolDayDatas` is a **top-level** entity, NOT a field on `Pool`.
+- **`unique_lp_count` stays NULL.** `pool.liquidityProviderCount` is **0** on every
+  probed pool — the built-in counter is unimplemented, exactly as suspected.
+- **`active_liquidity_distribution` from `pool.ticks`** — each tick has `tickIdx`,
+  `liquidityGross` (BigInt string), `price0` (decimal string). Real and usable.
+  The real query fetches a window of ticks around `pool.tick` ordered by `tickIdx`
+  so the chart reads left→right in price order (probe used top-by-liquidityGross
+  just to confirm the shape).
+- `pool.txCount` is **cumulative** (not per-day) — not used for the 7d count.
 
 ## Purpose
 The concentrated-liquidity (v3) story is what makes BrokerForce more than a
@@ -64,28 +94,27 @@ Our v3 pools span several chains (`canonicalChain` folds them to `ethereum`,
 `arbitrum`, `polygon`, `base`, `optimism`, `bsc`, …). Uniswap-v3 publishes a
 **distinct subgraph deployment per chain** on The Graph decentralized network
 (`gateway.thegraph.com/api/{GRAPH_API_KEY}/subgraphs/id/{DEPLOYMENT_ID}`). The
-step carries a `chain → deploymentId` map; a chain absent from the map is simply
-not enriched (logged). The exact deployment IDs are published in Uniswap's docs /
-The Graph explorer and **must be confirmed by the discovery probe (step 1 below)**
-before wiring — this spec does not hardcode unverified IDs.
+step carries a `chain → deploymentId` map (the probe-verified IDs above); a chain
+absent from the map is simply not enriched (logged) — that's how optimism and any
+non-mapped chain degrade cleanly.
 
-## Field-by-field: honest availability
-The Uniswap-v3 subgraph does not expose all three fields equally well. Scoping
-each to what's real, not what's wished:
+## Field-by-field (settled by the probe)
 
-| Field | Source in v3 subgraph | Confidence | Recommendation |
-|---|---|---|---|
-| **`active_liquidity_distribution`** | `pool.ticks(orderBy: tickIdx)` → `tickIdx`, `liquidityGross/Net`, `price0` | **High** — the flagship, well-supported | **Ship first-class.** Bucket/cap ticks (see below). |
-| **`swap_count_7d`** | `poolDayDatas(first: 7, orderBy: date, desc)` per-day tx counts, summed | **Medium** — per-day vs cumulative `txCount` semantics need probe confirmation | Ship **best-effort**; if the probe shows only cumulative counts, fall back to a clearly-labeled cumulative or defer. |
-| **`unique_lp_count`** | *No reliable field.* `pool.liquidityProviderCount` exists but Uniswap's subgraph famously leaves it **0**; a true count means paginating open `positions` (expensive, imperfect). | **Low** | **DEFER** — keep column NULL, and don't advertise LP counts. (Open decision — see below.) |
+| Field | Source in v3 subgraph | Verdict |
+|---|---|---|
+| **`active_liquidity_distribution`** | `pool.ticks` → `tickIdx`, `liquidityGross`, `price0`, windowed around `pool.tick`, ordered by `tickIdx` | **Ship first-class.** Cap at N ticks around current price (see below). |
+| **`swap_count_7d`** | `poolDayDatas(first: 7, orderBy: date, desc, where:{pool})` → **per-day** `txCount`, summed | **Ship first-class.** Probe confirmed per-day (not cumulative). |
+| **`unique_lp_count`** | `pool.liquidityProviderCount` — probe-confirmed **0** on every pool | **DEFER** — column stays NULL, no LP-count in the UI. |
 
 ### Tick distribution shaping
 Raw `pool.ticks` can be thousands of entries. To fit the JSONB column's
 `[{priceTick, liquidity}]` shape (already consumed by `PoolDetailPanel`) and stay
-cheap: request active ticks around the current price, cap at N buckets (e.g. the
-±M initialized ticks nearest `pool.tick`), and store `{priceTick: price0,
-liquidity: liquidityGross}`. Exact N/M finalized after the probe shows real tick
-density for our pools.
+cheap: fetch the initialized ticks in a window around `pool.tick` — **±20 tick
+spacings** either side (`tickIdx_gte / tickIdx_lte`, `first: 41`, `orderBy:
+tickIdx`) — and store `{priceTick: Number(price0), liquidity: Number(liquidityGross)}`.
+`liquidityGross` is a BigInt string; it's cast to Number for the display column
+(precision loss is irrelevant for a bar-height). A pool with no initialized ticks
+in-window → empty array → the chart's existing "no data" path.
 
 ## Pair-level "popularity" rollup
 `swap_count_7d` is per-pool; `LiquidityActivityPanel` shows **pair-level**. Mirror
@@ -98,16 +127,13 @@ how `poolTvl` was threaded in spec 010 Fix 3:
   with the real 7d swap count (or keep "pending" gracefully when NULL); rewrite
   the footnote to match what we actually ship.
 
-## Discovery probe (implementation step 1, before any wiring)
+## Discovery probe — DONE
 Egress to the subgraph is blocked from the analysis container but open on GitHub
-Actions runners (where `GRAPH_API_KEY` lives as a secret). A **throwaway CI probe**
-(temporary job, reverted before the real PR — same pattern used for prior API
-discovery) confirms, against 2–3 real v3 pool addresses of ours:
-1. The correct per-chain deployment IDs resolve and answer.
-2. `pool.ticks` field names + realistic tick counts (to set the cap).
-3. Whether `poolDayDatas` gives per-day or cumulative tx counts (settles `swap_count_7d`).
-4. That `liquidityProviderCount` is indeed 0 (settles the `unique_lp_count` defer).
-Only after the probe pins these down do we finalize the query + field mapping.
+Actions runners (where `GRAPH_API_KEY` lives as a repo secret). A throwaway
+push-triggered CI probe (reverted before this feature landed) confirmed the
+deployment IDs, tick shape, per-day `poolDayDatas`, and the `liquidityProviderCount
+= 0` fact — see "Discovery-probe results" at the top. The query + field mapping
+below are finalized against those results, not assumptions.
 
 ## Query-budget note
 Free tier ≈ 100k queries/month. Daily pipeline × batched multi-pool queries
@@ -133,7 +159,7 @@ logs the query count so we can watch it. No per-pool fan-out.
 - [ ] With `GRAPH_API_KEY` set, `enrich-pools-subgraph` populates
       `active_liquidity_distribution` for identified v3 pools with valid addresses;
       `PoolDetailPanel`'s distribution chart renders real buckets.
-- [ ] `swap_count_7d` populated (best-effort per probe outcome); pair-level rollup
+- [ ] `swap_count_7d` populated (Σ of 7 per-day `txCount`); pair-level rollup
       surfaces in `LiquidityActivityPanel` (real number, or graceful "pending" when NULL).
 - [ ] Without `GRAPH_API_KEY`, the step no-ops (exit 0), pipeline unaffected, columns stay NULL.
 - [ ] A v3 pool the subgraph can't answer → columns stay NULL, never fabricated.
