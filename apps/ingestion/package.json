@@ -6,6 +6,7 @@
   "scripts": {
     "ingest": "tsx src/ingest-assets.ts",
     "ingest-pools": "tsx src/ingest-pools.ts",
+    "enrich-pools-subgraph": "tsx src/enrich-pools-subgraph.ts",
     "ingest-sentiment": "tsx src/ingest-sentiment.ts",
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc --noEmit",
