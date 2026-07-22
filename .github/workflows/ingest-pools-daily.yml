@@ -63,12 +63,20 @@ jobs:
           # rate-limits them aggressively -- the first run 429'd on nearly
           # every candle call. https://www.coingecko.com/en/api/pricing
           COINGECKO_API_KEY: ${{ secrets.COINGECKO_API_KEY }}
+          # The Graph gateway key for Uniswap-v3 subgraph enrichment (spec 012).
+          # Optional: without it, enrich-pools-subgraph no-ops and the tick/
+          # swap-count columns stay NULL -- the rest of the pipeline is
+          # unaffected. Runs AFTER ingest-pools so the v3 pool rows + their
+          # validated on-chain addresses already exist, and BEFORE compute-ort
+          # only for ordering tidiness (ORT never reads these columns).
+          GRAPH_API_KEY: ${{ secrets.GRAPH_API_KEY }}
         run: |
           npm run migrate
           npm run ingest
           npm run generate-pairs
           npm run compute-metrics
           npm run ingest-pools
+          npm run enrich-pools-subgraph
           npm run compute-ort
 
       # Market sentiment (Fear & Greed) is an INDEPENDENT cog -- it doesn't

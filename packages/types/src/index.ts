@@ -141,6 +141,11 @@ export interface VolumeFieldSet {
   volumeStability: number | null;
   volumeShare: number | null;
   feeOpportunityScore: number | null;
+  // Σ swap_count_7d across the pair's pools -- the 7-day on-chain swap count
+  // from the Uniswap-v3 subgraph (spec 012), joined in by routes/pairs.ts like
+  // poolTvl. Null when no v3 pool of the pair has been subgraph-enriched yet
+  // (no key, not-yet-run, or none of its pools are on a mapped chain).
+  swapCount7d: number | null;
 }
 
 // Per docs/ORT.md — the composite score, kept separate from PairMetrics since it's

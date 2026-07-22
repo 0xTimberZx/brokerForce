@@ -109,12 +109,15 @@ non-mapped chain degrade cleanly.
 ### Tick distribution shaping
 Raw `pool.ticks` can be thousands of entries. To fit the JSONB column's
 `[{priceTick, liquidity}]` shape (already consumed by `PoolDetailPanel`) and stay
-cheap: fetch the initialized ticks in a window around `pool.tick` — **±20 tick
-spacings** either side (`tickIdx_gte / tickIdx_lte`, `first: 41`, `orderBy:
-tickIdx`) — and store `{priceTick: Number(price0), liquidity: Number(liquidityGross)}`.
-`liquidityGross` is a BigInt string; it's cast to Number for the display column
-(precision loss is irrelevant for a bar-height). A pool with no initialized ticks
-in-window → empty array → the chart's existing "no data" path.
+cheap (one query per pool, no two-pass tick-window math): fetch the **40 most-liquid
+initialized ticks** (`ticks(first: 40, orderBy: liquidityGross, orderDirection:
+desc)`) and store `{priceTick: Number(price0), liquidity: Number(liquidityGross)}`,
+**re-sorted by `tickIdx`** so the chart reads left→right in price order. The probe
+showed a handful of ticks hold the overwhelming majority of a pool's liquidity, so
+top-40-by-liquidity faithfully captures the distribution's shape. `liquidityGross`
+is a BigInt string cast to Number for a display column (precision loss is
+irrelevant for a bar height). No ticks → empty array → the chart's existing "no
+data" path. (A price-windowed variant is a later refinement.)
 
 ## Pair-level "popularity" rollup
 `swap_count_7d` is per-pool; `LiquidityActivityPanel` shows **pair-level**. Mirror

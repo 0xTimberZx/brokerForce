@@ -54,16 +54,24 @@ export function LiquidityActivityPanel({ metrics }: LiquidityActivityPanelProps)
           </span>
         </div>
         <div className="flex items-center justify-between">
-          <span className="font-body text-sm text-ink-muted">Pair popularity</span>
-          <span className="font-mono text-sm text-ink-muted italic">pending pool data†</span>
+          <span className="font-body text-sm text-ink-muted">Swap activity (7d)</span>
+          {v?.swapCount7d != null ? (
+            <span className="font-mono text-sm text-ink">{v.swapCount7d.toLocaleString()} swaps</span>
+          ) : (
+            <span className="font-mono text-sm text-ink-muted italic">pending pool data†</span>
+          )}
         </div>
       </div>
 
       <p className="font-body text-[11px] text-ink-muted mt-3">
         * Pair-level volume is approximated as min(volume A, volume B) — the liquidity-constrained side, not real
         pool-specific trading volume. TVL and volume/TVL ratio are now real, aggregated across the pair's pools.
-        † Pair popularity (swap counts, unique LPs) still awaits the deeper pool feed — those tick-/LP-level
-        figures aren't ingested by the current source.
+        {v?.swapCount7d != null ? (
+          <> Swap activity is the real 7-day on-chain swap count summed across the pair's Uniswap-v3 pools.</>
+        ) : (
+          <> † Swap activity (7-day on-chain swap count) is populated for the pair's Uniswap-v3 pools once subgraph
+            enrichment has run; it reads “pending” until then.</>
+        )}
       </p>
     </div>
   );

@@ -79,6 +79,12 @@ describe("toPairMetrics", () => {
     expect(result.volume.feeOpportunityScore).toBeNull();
   });
 
+  it("threads the route-joined poolTvl + swapCount7d aggregates through (default null)", () => {
+    expect(toPairMetrics(makeRow()).volume.swapCount7d).toBeNull();
+    expect(toPairMetrics(makeRow(), 1_000_000, 4200).volume.swapCount7d).toBe(4200);
+    expect(toPairMetrics(makeRow(), 1_000_000, 4200).volume.poolTvl).toBe(1_000_000);
+  });
+
   it("passes confidence through unchanged", () => {
     expect(toPairMetrics(makeRow({ confidence: "low" })).confidence).toBe("low");
   });

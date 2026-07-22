@@ -71,7 +71,11 @@ export function num(v: string | null): number | null {
   return v !== null ? Number(v) : null;
 }
 
-export function toPairMetrics(row: PairMetricsDbRow, poolTvl: number | null = null): PairMetrics {
+export function toPairMetrics(
+  row: PairMetricsDbRow,
+  poolTvl: number | null = null,
+  swapCount7d: number | null = null
+): PairMetrics {
   return {
     pairId: row.pair_id,
     window: row.window as CanonicalWindow,
@@ -107,6 +111,10 @@ export function toPairMetrics(row: PairMetricsDbRow, poolTvl: number | null = nu
       volumeStability: num(row.volume_stability),
       volumeShare: num(row.volume_share),
       feeOpportunityScore: num(row.fee_opportunity_score),
+      // Σ subgraph swap_count_7d across the pair's pools (spec 012), joined in
+      // by the route like poolTvl -- not a pair_metrics column, so it arrives
+      // as a separate argument. Null when no pool has been enriched yet.
+      swapCount7d,
     },
     confidence: row.confidence,
     computedAt: row.computed_at,
@@ -122,17 +130,23 @@ pairsRouter.get("/:assetA/:assetB", async (req, res) => {
     return;
   }
 
-  const [metricsRows, poolTvlRows] = await Promise.all([
+  const [metricsRows, poolAggRows] = await Promise.all([
     query<PairMetricsDbRow>(`SELECT * FROM pair_metrics WHERE pair_id = $1 AND "window" = $2`, [pair.id, window]),
-    // Aggregate pool TVL for the pair (spec10 Fix 3). NULL (not 0) when the
-    // pair has no pools with a TVL -- SUM over zero rows is NULL, which is the
-    // honest "no pool data" state the panel renders as an em-dash.
-    query<{ pool_tvl: string | null }>(
-      `SELECT SUM(tvl) AS pool_tvl FROM pools WHERE pair_id = $1 AND tvl IS NOT NULL`,
+    // Pair-level pool aggregates joined into the detail response. Each SUM is
+    // NULL (not 0) over zero matching rows -- the honest "no pool data" state
+    // the panels render as an em-dash / "pending":
+    //   pool_tvl       -- Σ pools.tvl (spec10 Fix 3)
+    //   swap_count_7d  -- Σ subgraph swap_count_7d (spec 012); NULL until a v3
+    //                     pool of the pair has been enriched.
+    query<{ pool_tvl: string | null; swap_count_7d: string | null }>(
+      `SELECT SUM(tvl) AS pool_tvl,
+              SUM(swap_count_7d) AS swap_count_7d
+         FROM pools WHERE pair_id = $1`,
       [pair.id]
     ),
   ]);
-  const poolTvl = num(poolTvlRows[0]?.pool_tvl ?? null);
+  const poolTvl = num(poolAggRows[0]?.pool_tvl ?? null);
+  const swapCount7d = num(poolAggRows[0]?.swap_count_7d ?? null);
 
   const response: PairDetailResponse = {
     pairId: pair.id,
@@ -145,7 +159,7 @@ pairsRouter.get("/:assetA/:assetB", async (req, res) => {
     // aligned history -- see compute-metrics.ts's MIN_POINTS_FOR_STATS
     // skip). The pair existing and its metrics existing are different facts;
     // conflating them into one error would hide which one is actually true.
-    metrics: metricsRows[0] ? toPairMetrics(metricsRows[0], poolTvl) : null,
+    metrics: metricsRows[0] ? toPairMetrics(metricsRows[0], poolTvl, swapCount7d) : null,
   };
   res.json(response);
 });
