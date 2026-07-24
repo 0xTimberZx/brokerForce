@@ -83,7 +83,17 @@ non-v3 pools, pools the subgraph doesn't index) → consumers fall back to
 ### UI
 No structural change — `FeeILPreview` and the backtest summary already render
 `feeOpportunity` / the fee figure; they simply stop showing `$0` once real
-tiers flow. Optionally soften any "fee tier unknown" copy, but not required.
+tiers flow.
+
+### Pool Explorer display (folded in)
+The Pool Explorer's list + detail routes read only raw `fee_tier`, so they
+showed "0.00% fee" for the sentinel rows — contradicting the now-real
+`fee_opportunity`, and leaving the fee-tier filter/sort dead for enriched pools.
+Both routes now serve **`COALESCE(fee_tier_verified, fee_tier) AS fee_tier`**
+(`services/poolService.ts` stored-pool read, `routes/pools.ts` detail read), so
+the displayed tier — and the JS filter/sort that operate on it — use the
+verified value when present. Non-enriched pools still show `0.00%` (no verified
+data); same partial-but-honest coverage as `fee_opportunity`.
 
 ## Pipeline-ordering note (1-cycle lag, self-healing)
 Current order: `… compute-metrics → ingest-pools → enrich-pools-subgraph → compute-ort`.

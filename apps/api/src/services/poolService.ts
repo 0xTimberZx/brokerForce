@@ -118,7 +118,13 @@ export async function getPoolsForPair(
 ): Promise<PoolListResult> {
   if (tier === "active") {
     const rows = await query<StoredPoolRow>(
-      `SELECT id, pair_id, dex, chain, fee_tier, tvl, volume, active_liquidity,
+      // Display the subgraph-verified fee tier when we have it, else the raw
+      // fee_tier (spec 013). Most DexScreener rows carry the 0/UNKNOWN sentinel;
+      // without this the Explorer showed "0.00% fee" even for pools whose real
+      // tier is known, contradicting Pair Analysis' fee_opportunity.
+      `SELECT id, pair_id, dex, chain,
+              COALESCE(fee_tier_verified, fee_tier) AS fee_tier,
+              tvl, volume, active_liquidity,
               swap_count_7d, unique_lp_count, active_liquidity_distribution
        FROM pools WHERE pair_id = $1`,
       [pairId]
