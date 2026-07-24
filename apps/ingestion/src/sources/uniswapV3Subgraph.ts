@@ -51,6 +51,20 @@ export interface RawPoolDayData {
 export interface SubgraphPoolResult {
   swapCount7d: number | null;
   activeLiquidityDistribution: { priceTick: number; liquidity: number }[];
+  // The pool's real fee tier, FRACTIONAL (0.0005 = 0.05%), from pool.feeTier.
+  // null when the subgraph doesn't report it -> the caller leaves
+  // pools.fee_tier_verified NULL and consumers fall back to fee_tier (spec 013).
+  feeTierFractional: number | null;
+}
+
+/** PURE: the Uniswap-v3 subgraph reports pool.feeTier as an integer in
+ * millionths (500 = 0.05%, 3000 = 0.3%, 10000 = 1% -- probe-confirmed). Convert
+ * to the FRACTIONAL form the rest of the codebase uses for fee_tier (500 ->
+ * 0.0005), so no consumer needs a unit conversion. Non-finite / <= 0 -> null. */
+export function feeTierToFractional(raw: string | number | null | undefined): number | null {
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return n / 1_000_000;
 }
 
 /** PURE: sum per-day txCount over the (up to 7) poolDayDatas rows. Returns null
@@ -95,19 +109,20 @@ export function ticksToDistribution(ticks: RawTick[], cap = MAX_TICKS): { priceT
 
 interface GqlResponse {
   data?: {
-    pool?: { tick?: number | null; ticks?: RawTick[] } | null;
+    pool?: { tick?: number | null; feeTier?: string | number | null; ticks?: RawTick[] } | null;
     poolDayDatas?: RawPoolDayData[];
   };
   errors?: { message: string }[];
 }
 
-// One request per pool: pool.ticks (top by liquidity) + top-level poolDayDatas
-// for the pool (per-day txCount). liquidityProviderCount is intentionally NOT
-// requested -- the probe confirmed it's always 0.
+// One request per pool: pool.feeTier + pool.ticks (top by liquidity) + top-level
+// poolDayDatas for the pool (per-day txCount). liquidityProviderCount is
+// intentionally NOT requested -- the probe confirmed it's always 0.
 const POOL_ENRICH_QUERY = `
 query Enrich($id: ID!, $addr: String!) {
   pool(id: $id) {
     tick
+    feeTier
     ticks(first: ${MAX_TICKS}, orderBy: liquidityGross, orderDirection: desc) {
       tickIdx
       liquidityGross
@@ -163,6 +178,7 @@ export class UniswapV3Subgraph {
     return {
       swapCount7d: sumSwapCounts(body.data?.poolDayDatas ?? []),
       activeLiquidityDistribution: ticksToDistribution(pool.ticks ?? []),
+      feeTierFractional: feeTierToFractional(pool.feeTier),
     };
   }
 }

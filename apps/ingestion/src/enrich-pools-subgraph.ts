@@ -87,15 +87,20 @@ async function main() {
         // Store [] distribution as NULL (nothing to show) rather than an empty
         // array, so the read path's "no data" check stays a simple NULL test.
         const dist = result.activeLiquidityDistribution.length > 0 ? JSON.stringify(result.activeLiquidityDistribution) : null;
+        // fee_tier_verified (spec 013): the real fee tier from pool.feeTier,
+        // fractional. NULL when the subgraph didn't report it -> consumers fall
+        // back to the fee_tier sentinel. Additive: pools.fee_tier (the identity
+        // key) is never touched here.
         await query(
           `UPDATE pools
               SET swap_count_7d = $1,
                   active_liquidity_distribution = $2::jsonb,
+                  fee_tier_verified = $3,
                   updated_at = now()
-            WHERE id = $3`,
-          [result.swapCount7d, dist, pool.id]
+            WHERE id = $4`,
+          [result.swapCount7d, dist, result.feeTierFractional, pool.id]
         );
-        if (result.swapCount7d !== null || dist !== null) enriched++;
+        if (result.swapCount7d !== null || dist !== null || result.feeTierFractional !== null) enriched++;
         else unknownPool++;
       }
     } catch (err) {

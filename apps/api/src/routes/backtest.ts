@@ -184,15 +184,17 @@ backtestRouter.post("/", async (req, res) => {
   const feeTier = body.feeTier ?? 0.003; // 0.3%, a common default tier -- not from any spec'd source
 
   // Pool selection (spec10 Fix 2): fees ride on the pair's REAL pool. Prefer
-  // the pool whose fee_tier matches the resolved tier (same fractional unit as
+  // the pool whose fee tier matches the resolved tier (same fractional unit as
   // feeTier -- see pool-sources parsePoolName); otherwise fall back to the
-  // pair's deepest (highest-TVL) pool. Rows with NULL tvl can't anchor a share,
-  // so they're excluded. No pool -> poolTvl stays undefined and the service
-  // returns feeBasis "unavailable".
+  // pair's deepest (highest-TVL) pool. The tier match prefers the
+  // subgraph-verified tier (spec 013): COALESCE(fee_tier_verified, fee_tier),
+  // since fee_tier is 0/UNKNOWN for most DexScreener rows and would never match.
+  // Rows with NULL tvl can't anchor a share, so they're excluded. No pool ->
+  // poolTvl stays undefined and the service returns feeBasis "unavailable".
   const poolRows = await query<{ tvl: string | null; volume: string | null }>(
     `SELECT tvl, volume FROM pools
      WHERE pair_id = $1 AND tvl IS NOT NULL
-     ORDER BY (fee_tier = $2) DESC, tvl DESC
+     ORDER BY (COALESCE(fee_tier_verified, fee_tier) = $2) DESC, tvl DESC
      LIMIT 1`,
     [pair.id, feeTier]
   );

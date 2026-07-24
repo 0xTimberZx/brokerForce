@@ -87,7 +87,12 @@ poolDetailRouter.get("/:poolId", async (req, res) => {
   // list endpoint has id: "" (services/poolService.ts) precisely because
   // there's no detail row to look up here.
   const rows = await query<PoolDetailDbRow>(
-    `SELECT id, pair_id, dex, chain, fee_tier, tvl, volume, active_liquidity,
+    // Display the subgraph-verified fee tier when present, else raw fee_tier
+    // (spec 013) -- keeps the detail panel consistent with the list + Pair
+    // Analysis rather than showing the 0/UNKNOWN sentinel as "0.00% fee".
+    `SELECT id, pair_id, dex, chain,
+            COALESCE(fee_tier_verified, fee_tier) AS fee_tier,
+            tvl, volume, active_liquidity,
             swap_count_7d, unique_lp_count, active_liquidity_distribution
      FROM pools WHERE id = $1`,
     [req.params.poolId]

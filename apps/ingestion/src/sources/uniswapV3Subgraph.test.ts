@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { sumSwapCounts, ticksToDistribution, V3_SUBGRAPH_IDS, UniswapV3Subgraph } from "./uniswapV3Subgraph.js";
+import {
+  sumSwapCounts,
+  ticksToDistribution,
+  feeTierToFractional,
+  V3_SUBGRAPH_IDS,
+  UniswapV3Subgraph,
+} from "./uniswapV3Subgraph.js";
 
 describe("sumSwapCounts", () => {
   it("sums per-day txCounts (probe values)", () => {
@@ -63,6 +69,27 @@ describe("ticksToDistribution", () => {
 
   it("returns [] for no ticks -> the chart's existing no-data path", () => {
     expect(ticksToDistribution([])).toEqual([]);
+  });
+});
+
+describe("feeTierToFractional", () => {
+  it("converts subgraph millionths to fractional (probe values)", () => {
+    expect(feeTierToFractional(500)).toBe(0.0005); // 0.05%
+    expect(feeTierToFractional(3000)).toBe(0.003); // 0.3%
+    expect(feeTierToFractional(10000)).toBe(0.01); // 1%
+    expect(feeTierToFractional(100)).toBe(0.0001); // 0.01%
+  });
+
+  it("accepts string feeTier (subgraph may return strings)", () => {
+    expect(feeTierToFractional("500")).toBe(0.0005);
+  });
+
+  it("returns null for 0 / negative / non-numeric -> consumers fall back to fee_tier", () => {
+    expect(feeTierToFractional(0)).toBeNull();
+    expect(feeTierToFractional(-5)).toBeNull();
+    expect(feeTierToFractional("oops")).toBeNull();
+    expect(feeTierToFractional(null)).toBeNull();
+    expect(feeTierToFractional(undefined)).toBeNull();
   });
 });
 

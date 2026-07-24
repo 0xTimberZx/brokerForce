@@ -1,0 +1,21 @@
+-- 013: verified fee tiers from the Uniswap-v3 subgraph (spec 013).
+--
+-- pools.fee_tier is the "0 = UNKNOWN" sentinel for most rows because DexScreener
+-- (the primary source) doesn't report fee tiers -- which zeroes out
+-- pair_metrics.fee_opportunity (Σ volume × fee_tier) and the "Fee opportunity"
+-- the UI shows. The Uniswap-v3 subgraph exposes pool.feeTier, and
+-- enrich-pools-subgraph already queries the pool by address, so it captures the
+-- real tier here at no extra query cost.
+--
+-- ADDITIVE ON PURPOSE: fee_tier is part of the pool identity key
+-- pools_pair_dex_chain_fee_unique (pair_id, dex, chain, fee_tier), so updating
+-- it in place would risk a unique-key collision and mutate a pool's identity
+-- mid-life. This new nullable column holds the verified tier instead; consumers
+-- prefer COALESCE(fee_tier_verified, fee_tier). The identity key, fee_tier, and
+-- the uniqueness constraint are untouched. NULL = not verified from the subgraph
+-- (non-Uniswap / non-v3 / not-indexed pools) -> consumers fall back to fee_tier.
+--
+-- Stored FRACTIONAL (0.0005 = 0.05%), matching fee_tier's unit, so no consumer
+-- needs a conversion.
+
+ALTER TABLE pools ADD COLUMN IF NOT EXISTS fee_tier_verified NUMERIC;
