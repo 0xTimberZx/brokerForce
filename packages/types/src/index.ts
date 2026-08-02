@@ -201,6 +201,14 @@ export interface OrtRankedPair {
   score: number;
   quadrantLabel: QuadrantLabel | null;
   confidence: "full" | "low";
+  // The pair's deepest single-pool TVL (MAX over its pools), joined in by the
+  // ranked route (spec 014). Null when the pair has no pools with a TVL.
+  topPoolTvl: number | null;
+  // True when the deepest pool is below the usable-depth floor (or there are no
+  // pools) -- the ORT liquidity component is asset-level volume, not pool depth,
+  // so a "prime" pair can still have no actionable on-chain venue. Surfaced so
+  // the board can flag it rather than imply a pool that isn't there.
+  thinLiquidity: boolean;
 }
 
 // Per docs/API.md §4 / spec2.md -- GET /search grouped results.

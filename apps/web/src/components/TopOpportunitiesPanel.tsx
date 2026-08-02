@@ -94,6 +94,16 @@ export function TopOpportunitiesPanel() {
                     {p.assetA}/{p.assetB}
                   </span>
                   <span className="ml-auto flex items-center gap-3 font-mono text-sm">
+                    {/* Thin-liquidity flag (spec 014): the score is asset-level,
+                        so a "prime" pair can still have no actionable pool. */}
+                    {p.thinLiquidity && (
+                      <span
+                        className="text-[10px] uppercase tracking-wide text-neg border border-neg/40 px-1.5 py-0.5"
+                        title="Deepest on-chain pool is below a usable size — the score reflects the price relationship, not pool depth"
+                      >
+                        thin liq
+                      </span>
+                    )}
                     {p.quadrantLabel && (
                       <span className="text-[10px] uppercase tracking-wide text-ink-muted">{p.quadrantLabel}</span>
                     )}
@@ -110,7 +120,9 @@ export function TopOpportunitiesPanel() {
           <p className="mt-4 pt-3 border-t border-line font-body text-[11px] leading-relaxed text-ink-muted">
             <span className="text-ink">ORT</span> — a 0–100 score of how attractive a pair is for providing
             liquidity (higher is better). <span className="text-ink">Signal</span> — a plain read: prime
-            (best) · active · quiet · avoid.
+            (best) · active · quiet · avoid.{" "}
+            <span className="text-neg">thin liq</span> — the score reflects the price relationship, but the
+            pair's deepest on-chain pool is too small to meaningfully provide into.
           </p>
         </>
       )}
