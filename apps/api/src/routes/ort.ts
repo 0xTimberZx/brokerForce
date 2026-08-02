@@ -5,6 +5,14 @@ import type { CanonicalWindow, OrtScore, OrtScoreHistoryPoint, OrtRankedPair } f
 // Per docs/API.md §5 and docs/specs/004-ort-engine/spec4.md.
 export const ortRouter = Router();
 
+// Deepest-pool TVL below which a pair is flagged "thin liquidity" on the
+// rankings (spec 014). Mirrors the active-tier gate's per-pool bar
+// (apps/ingestion/src/tier-gate.ts ACTIVE_TVL_THRESHOLD_USD) -- the platform's
+// own "this pool is worth something" line -- so a high ORT score (driven by
+// asset-level volume, not pool depth) can't imply an actionable pool that isn't
+// there. Tunable here.
+const MIN_ACTIONABLE_POOL_TVL_USD = 50_000;
+
 function parseWindow(q: unknown): CanonicalWindow {
   const allowed: CanonicalWindow[] = [30, 90, 200];
   const num = Number(q);
@@ -128,8 +136,13 @@ ortRankedRouter.get("/ort", async (req, res) => {
     score: string;
     quadrant_label: OrtScore["quadrantLabel"];
     confidence: "full" | "low";
+    top_pool_tvl: string | null;
   }>(
-    `SELECT o.pair_id, p.asset_a, p.asset_b, o.score, o.quadrant_label, o.confidence
+    // top_pool_tvl = the pair's deepest single pool (spec 014). ORT's liquidity
+    // component is asset-level volume, not pool depth, so a "prime" pair can
+    // still have no actionable pool; the flag below surfaces that.
+    `SELECT o.pair_id, p.asset_a, p.asset_b, o.score, o.quadrant_label, o.confidence,
+            (SELECT MAX(tvl) FROM pools WHERE pair_id = o.pair_id AND tvl IS NOT NULL) AS top_pool_tvl
      FROM ort_scores o
      JOIN pairs p ON p.id = o.pair_id
      WHERE o."window" = $1
@@ -139,14 +152,19 @@ ortRankedRouter.get("/ort", async (req, res) => {
     [window, limit]
   );
 
-  const ranked: OrtRankedPair[] = rows.map((r) => ({
-    pairId: r.pair_id,
-    assetA: r.asset_a,
-    assetB: r.asset_b,
-    score: Number(r.score),
-    quadrantLabel: r.quadrant_label,
-    confidence: r.confidence,
-  }));
+  const ranked: OrtRankedPair[] = rows.map((r) => {
+    const topPoolTvl = r.top_pool_tvl === null ? null : Number(r.top_pool_tvl);
+    return {
+      pairId: r.pair_id,
+      assetA: r.asset_a,
+      assetB: r.asset_b,
+      score: Number(r.score),
+      quadrantLabel: r.quadrant_label,
+      confidence: r.confidence,
+      topPoolTvl,
+      thinLiquidity: topPoolTvl === null || topPoolTvl < MIN_ACTIONABLE_POOL_TVL_USD,
+    };
+  });
 
   res.json(ranked);
 });
