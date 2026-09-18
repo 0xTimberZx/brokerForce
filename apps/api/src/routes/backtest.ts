@@ -191,8 +191,12 @@ backtestRouter.post("/", async (req, res) => {
   // since fee_tier is 0/UNKNOWN for most DexScreener rows and would never match.
   // Rows with NULL tvl can't anchor a share, so they're excluded. No pool ->
   // poolTvl stays undefined and the service returns feeBasis "unavailable".
-  const poolRows = await query<{ tvl: string | null; volume: string | null }>(
-    `SELECT tvl, volume FROM pools
+  const poolRows = await query<{
+    tvl: string | null;
+    volume: string | null;
+    active_liquidity_distribution: { priceTick: number; liquidity: number }[] | null;
+  }>(
+    `SELECT tvl, volume, active_liquidity_distribution FROM pools
      WHERE pair_id = $1 AND tvl IS NOT NULL
      ORDER BY (COALESCE(fee_tier_verified, fee_tier) = $2) DESC, tvl DESC
      LIMIT 1`,
@@ -200,6 +204,9 @@ backtestRouter.post("/", async (req, res) => {
   );
   const pool = poolRows[0];
   const poolTvlUsd = pool ? Number(pool.tvl) : undefined;
+  // The chosen pool's liquidity distribution (spec 015) -- enables the
+  // concentration-aware "tick" fee basis; JSONB comes back already parsed.
+  const activeLiquidityDistribution = pool?.active_liquidity_distribution ?? undefined;
   // Pool `volume` is 24h. Per daily step that IS the per-step volume; per hourly
   // step it's /24 so the fee sum stays comparable across granularities.
   const poolVolume24h = pool && pool.volume !== null ? Number(pool.volume) : undefined;
@@ -218,6 +225,7 @@ backtestRouter.post("/", async (req, res) => {
     positionSizeUsd: body.positionSizeUsd,
     poolTvlUsd,
     poolVolumePerStepUsd,
+    activeLiquidityDistribution,
   });
 
   const insertRows = await query<{ id: string; created_at: string }>(
