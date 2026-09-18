@@ -444,10 +444,13 @@ export interface BacktestResult {
   // directly in the API response, not just in code comments a frontend
   // consumer would never see.
   assumedPoolShareUsed: number;
-  // "pool" when the fee estimate is grounded in real pool TVL + volume;
-  // "unavailable" when the pair has no pool data (fees 0). Response-only, no DB
-  // column -- GET infers it from whether the stored fee is nonzero (spec10).
-  feeBasis: "pool" | "unavailable";
+  // "tick" -- concentration-aware, grounded in the pool's real liquidity
+  // distribution (spec 015); "pool" -- grounded in pool TVL + volume (spec10
+  // heuristic); "unavailable" -- no pool data (fees 0). Response-only, no DB
+  // column: a freshly-run backtest (POST) reports the true basis, while GET of a
+  // stored run infers "pool"/"unavailable" from whether the stored fee is
+  // nonzero (it can't reconstruct "tick" without persisting it).
+  feeBasis: "tick" | "pool" | "unavailable";
   createdAt: string;
 }
 

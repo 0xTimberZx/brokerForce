@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { runBacktest, widthPctToRange, DEFAULT_POSITION_SIZE_USD } from "./backtest.js";
+import {
+  runBacktest,
+  widthPctToRange,
+  DEFAULT_POSITION_SIZE_USD,
+  alignDistributionOrientation,
+  inRangeLiquidityFraction,
+} from "./backtest.js";
 
 function makeInput(overrides: Partial<Parameters<typeof runBacktest>[0]> = {}) {
   return {
@@ -143,5 +149,97 @@ describe("widthPctToRange", () => {
     const { rangeMin, rangeMax } = widthPctToRange(2.0, 0.1); // +/-10% around ratio=2.0
     expect(rangeMin).toBeCloseTo(1.9, 6);
     expect(rangeMax).toBeCloseTo(2.1, 6);
+  });
+});
+
+describe("alignDistributionOrientation (spec 015)", () => {
+  it("returns the distribution unchanged when already oriented to the pair ratio", () => {
+    const dist = [{ priceTick: 1.9, liquidity: 10 }, { priceTick: 2.0, liquidity: 40 }, { priceTick: 2.1, liquidity: 10 }];
+    const out = alignDistributionOrientation(dist, 2.0);
+    expect(out?.map((d) => d.priceTick)).toEqual([1.9, 2.0, 2.1]);
+  });
+
+  it("inverts a reciprocal-oriented distribution (price0 = 1/ratio)", () => {
+    const dist = [{ priceTick: 0.5, liquidity: 100 }]; // token0/token1 == 1/2 of the pair ratio 2.0
+    const out = alignDistributionOrientation(dist, 2.0);
+    expect(out).not.toBeNull();
+    expect(out![0]!.priceTick).toBeCloseTo(2.0, 6);
+  });
+
+  it("returns null when the distribution's scale is unrelated to the pair ratio", () => {
+    const dist = [{ priceTick: 100, liquidity: 10 }, { priceTick: 120, liquidity: 10 }];
+    expect(alignDistributionOrientation(dist, 2.0)).toBeNull();
+  });
+
+  it("returns null for empty input or non-finite ratio", () => {
+    expect(alignDistributionOrientation([], 2.0)).toBeNull();
+    expect(alignDistributionOrientation([{ priceTick: 2, liquidity: 1 }], 0)).toBeNull();
+  });
+});
+
+describe("inRangeLiquidityFraction (spec 015)", () => {
+  const dist = [
+    { priceTick: 1.9, liquidity: 10 },
+    { priceTick: 2.0, liquidity: 40 },
+    { priceTick: 2.1, liquidity: 10 },
+    { priceTick: 2.5, liquidity: 40 },
+  ];
+  it("sums the liquidity inside the range as a fraction of the total", () => {
+    expect(inRangeLiquidityFraction(dist, 1.95, 2.15)).toBeCloseTo(50 / 100, 6); // 2.0 + 2.1
+  });
+  it("is 1 when the range covers every bucket, small when it covers one peak", () => {
+    expect(inRangeLiquidityFraction(dist, 0, 100)).toBe(1);
+    expect(inRangeLiquidityFraction(dist, 1.99, 2.01)).toBeCloseTo(0.4, 6);
+  });
+  it("returns null when there is no positive liquidity", () => {
+    expect(inRangeLiquidityFraction([], 1, 2)).toBeNull();
+    expect(inRangeLiquidityFraction([{ priceTick: 2, liquidity: 0 }], 1, 3)).toBeNull();
+  });
+});
+
+describe("runBacktest tick-basis fee model (spec 015)", () => {
+  // ratio is constant 2.0 (pricesA 100 / pricesB 50); distribution peaks at 2.0.
+  const dist = [
+    { priceTick: 1.9, liquidity: 10 },
+    { priceTick: 1.95, liquidity: 20 },
+    { priceTick: 2.0, liquidity: 40 },
+    { priceTick: 2.05, liquidity: 20 },
+    { priceTick: 2.1, liquidity: 10 },
+  ];
+
+  it("uses feeBasis 'tick' when a usable distribution is supplied", () => {
+    const r = runBacktest(makeInput({ activeLiquidityDistribution: dist }));
+    expect(r.feeBasis).toBe("tick");
+  });
+
+  it("gives a tighter range a larger share + more fees (competes with less in-range liquidity)", () => {
+    const wide = runBacktest(makeInput({ rangeMin: 1.8, rangeMax: 2.2, activeLiquidityDistribution: dist }));
+    const tight = runBacktest(makeInput({ rangeMin: 1.98, rangeMax: 2.02, activeLiquidityDistribution: dist }));
+    expect(wide.feeBasis).toBe("tick");
+    expect(tight.feeBasis).toBe("tick");
+    expect(tight.assumedPoolShareUsed).toBeGreaterThan(wide.assumedPoolShareUsed);
+    expect(tight.feesEarnedUsd).toBeGreaterThan(wide.feesEarnedUsd); // both 100% in range here
+  });
+
+  it("aligns a reciprocal distribution rather than discarding it", () => {
+    const recip = dist.map((d) => ({ priceTick: 1 / d.priceTick, liquidity: d.liquidity }));
+    const r = runBacktest(makeInput({ activeLiquidityDistribution: recip }));
+    expect(r.feeBasis).toBe("tick");
+  });
+
+  it("falls back to 'pool' when the distribution's scale is unrelated to the pair", () => {
+    const offScale = [{ priceTick: 100, liquidity: 10 }, { priceTick: 120, liquidity: 10 }];
+    const r = runBacktest(makeInput({ activeLiquidityDistribution: offScale }));
+    expect(r.feeBasis).toBe("pool");
+  });
+
+  it("falls back to 'pool' when no distribution is supplied", () => {
+    expect(runBacktest(makeInput()).feeBasis).toBe("pool");
+  });
+
+  it("stays 'unavailable' when there is no pool data even with a distribution", () => {
+    const r = runBacktest(makeInput({ poolTvlUsd: 0, activeLiquidityDistribution: dist }));
+    expect(r.feeBasis).toBe("unavailable");
+    expect(r.feesEarnedUsd).toBe(0);
   });
 });

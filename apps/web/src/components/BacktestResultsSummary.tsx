@@ -94,14 +94,22 @@ export function BacktestResultsSummary({ result, note }: BacktestResultsSummaryP
             Fees and net P&amp;L read “needs pool data” because this pair has no ingested pool TVL/volume to
             ground a fee estimate — never a fabricated figure.
           </>
+        ) : result.feeBasis === "tick" ? (
+          <>
+            Fee earnings are concentration-aware: a ${result.positionSizeUsd.toLocaleString()} position takes a{" "}
+            {(result.assumedPoolShareUsed * 100).toFixed(2)}% share, competing only with the pool liquidity
+            <em> inside your range</em> (from the pool's real liquidity distribution), of each step's pool volume ×
+            fee tier. A tighter range meets less competing liquidity, so it earns a larger share while in range.
+            Still an estimate — directional for comparing ranges, not a dollar prediction.
+          </>
         ) : (
           <>
             Fee earnings are grounded in the pair's real pool: a $
             {result.positionSizeUsd.toLocaleString()} position takes a{" "}
             {(result.assumedPoolShareUsed * 100).toFixed(2)}% share of the pool (its capital over pool TVL,
             concentrated by range width and capped by real liquidity) of each step's pool volume × fee tier.
-            Still an estimate, not v3 tick math — treat fees and net P&amp;L as directional for comparing ranges,
-            not as a dollar prediction.
+            Still an estimate, not tick-level math — treat fees and net P&amp;L as directional for comparing
+            ranges, not as a dollar prediction.
           </>
         )}
       </p>
