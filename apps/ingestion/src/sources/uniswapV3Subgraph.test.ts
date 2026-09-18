@@ -3,6 +3,7 @@ import {
   sumSwapCounts,
   ticksToDistribution,
   feeTierToFractional,
+  subgraphKey,
   V3_SUBGRAPH_IDS,
   UniswapV3Subgraph,
 } from "./uniswapV3Subgraph.js";
@@ -93,17 +94,42 @@ describe("feeTierToFractional", () => {
   });
 });
 
-describe("UniswapV3Subgraph.forChain", () => {
-  it("builds a client for a mapped chain", () => {
-    expect(UniswapV3Subgraph.forChain("ethereum", "KEY")).toBeInstanceOf(UniswapV3Subgraph);
+describe("subgraphKey", () => {
+  it("joins chain and dex, lower-cased, so source casing still matches", () => {
+    expect(subgraphKey("ethereum", "uniswap")).toBe("ethereum:uniswap");
+    expect(subgraphKey("BSC", "PancakeSwap")).toBe("bsc:pancakeswap");
+  });
+});
+
+describe("UniswapV3Subgraph.forChainDex", () => {
+  it("builds a client for a mapped (chain, dex)", () => {
+    expect(UniswapV3Subgraph.forChainDex("ethereum", "uniswap", "KEY")).toBeInstanceOf(UniswapV3Subgraph);
   });
 
-  it("returns null for an unmapped chain (e.g. optimism) -> that chain is skipped", () => {
-    expect(UniswapV3Subgraph.forChain("optimism", "KEY")).toBeNull();
-    expect(UniswapV3Subgraph.forChain("unknown", "KEY")).toBeNull();
+  it("routes v3-fork DEXs to their own deployment (spec 016)", () => {
+    // PancakeSwap v3 on BSC is a distinct deployment from Uniswap v3 on BSC.
+    expect(UniswapV3Subgraph.forChainDex("bsc", "pancakeswap", "KEY")).toBeInstanceOf(UniswapV3Subgraph);
   });
 
-  it("only carries probe-verified, healthy deployment IDs", () => {
-    expect(Object.keys(V3_SUBGRAPH_IDS).sort()).toEqual(["arbitrum", "base", "bsc", "ethereum", "polygon"]);
+  it("matches regardless of source casing", () => {
+    expect(UniswapV3Subgraph.forChainDex("Ethereum", "Uniswap", "KEY")).toBeInstanceOf(UniswapV3Subgraph);
+  });
+
+  it("returns null for an unmapped (chain, dex) -> that pool is skipped", () => {
+    expect(UniswapV3Subgraph.forChainDex("optimism", "uniswap", "KEY")).toBeNull(); // unhealthy at probe time
+    expect(UniswapV3Subgraph.forChainDex("avalanche", "traderjoe", "KEY")).toBeNull(); // bins, not ticks
+    expect(UniswapV3Subgraph.forChainDex("avalanche", "uniswap", "KEY")).toBeNull(); // deferred: only a Messari-schema deployment exists
+    expect(UniswapV3Subgraph.forChainDex("bsc", "biswap", "KEY")).toBeNull(); // v2 AMM
+    expect(UniswapV3Subgraph.forChainDex("unknown", "unknown", "KEY")).toBeNull();
+  });
+
+  it("carries only (chain:dex)-keyed, probe-verified deployment IDs", () => {
+    // Every key is the "chain:dex" shape; no bare-chain keys linger from spec 012.
+    for (const k of Object.keys(V3_SUBGRAPH_IDS)) {
+      expect(k).toMatch(/^[a-z0-9]+:[a-z0-9-]+$/);
+    }
+    // The probe-confirmed multi-DEX win: PancakeSwap v3 on BSC.
+    expect(V3_SUBGRAPH_IDS["bsc:uniswap"]).toBeTruthy();
+    expect(V3_SUBGRAPH_IDS["bsc:pancakeswap"]).toBeTruthy();
   });
 });

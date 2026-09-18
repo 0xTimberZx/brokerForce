@@ -34,7 +34,9 @@ function sleep(ms: number): Promise<void> {
 interface V3PoolRow {
   id: string;
   chain: string;
+  dex: string;
   pool_address: string;
+  pool_version: string | null;
 }
 
 async function main() {
@@ -47,21 +49,29 @@ async function main() {
   }
   const gatewayBase = process.env.GRAPH_API_URL; // optional override; undefined -> client default
 
+  // spec 016: select by (chain, dex) rather than pool_version alone. Include
+  // pool_version-NULL pools on mapped DEXs -- BSC's uniswap pools arrive untagged
+  // and the subgraph is authoritative on whether they're really v3 (a pool it
+  // returns gets pool_version set to 'v3' below; one it doesn't know stays NULL).
+  // Explicitly-non-v3 rows (v2, etc.) are excluded to avoid guaranteed-miss queries.
   const pools = await query<V3PoolRow>(
-    `SELECT id, chain, pool_address
+    `SELECT id, chain, dex, pool_address, pool_version
        FROM pools
-      WHERE pool_version = 'v3' AND pool_address IS NOT NULL
-      ORDER BY chain`
+      WHERE pool_address IS NOT NULL
+        AND (pool_version = 'v3' OR pool_version IS NULL)
+      ORDER BY chain, dex`
   );
-  console.log(`enrich-pools-subgraph: ${pools.length} identified v3 pool(s) with an on-chain address.`);
+  console.log(`enrich-pools-subgraph: ${pools.length} candidate pool(s) (v3 or untagged) with an on-chain address.`);
   if (pools.length === 0) return;
 
-  // One client per chain; a chain with no known-healthy v3 deployment (e.g.
-  // optimism) yields null and every pool on it is skipped.
+  // One client per (chain, dex); a pair with no known-healthy v3 deployment
+  // (e.g. optimism:uniswap, or any non-tick DEX) yields null and its pools are
+  // skipped.
   const clients = new Map<string, UniswapV3Subgraph | null>();
-  const clientFor = (chain: string): UniswapV3Subgraph | null => {
-    if (!clients.has(chain)) clients.set(chain, UniswapV3Subgraph.forChain(chain, apiKey, gatewayBase));
-    return clients.get(chain) ?? null;
+  const clientFor = (chain: string, dex: string): UniswapV3Subgraph | null => {
+    const key = `${chain}:${dex}`;
+    if (!clients.has(key)) clients.set(key, UniswapV3Subgraph.forChainDex(chain, dex, apiKey, gatewayBase));
+    return clients.get(key) ?? null;
   };
 
   let enriched = 0; // rows we wrote at least one real value to
@@ -69,13 +79,13 @@ async function main() {
   let skippedChain = 0; // chain has no mapped deployment
   let failed = 0; // query/transport error for that pool
   let queries = 0; // subgraph requests actually issued (budget watch)
-  const skippedChains = new Set<string>();
+  const skippedPairs = new Set<string>(); // "chain:dex" with no mapped deployment
 
   for (const pool of pools) {
-    const client = clientFor(pool.chain);
+    const client = clientFor(pool.chain, pool.dex);
     if (!client) {
       skippedChain++;
-      skippedChains.add(pool.chain);
+      skippedPairs.add(`${pool.chain}:${pool.dex}`);
       continue;
     }
     try {
@@ -91,11 +101,19 @@ async function main() {
         // fractional. NULL when the subgraph didn't report it -> consumers fall
         // back to the fee_tier sentinel. Additive: pools.fee_tier (the identity
         // key) is never touched here.
+        //
+        // pool_version = 'v3' (spec 016): a pool the v3 subgraph *returned* is
+        // authoritatively a v3(-schema) pool, so confirm the version here. This
+        // progressively fixes the identification gap for untagged (NULL-version)
+        // pools without touching ingest or the identity key (pool_version isn't
+        // part of it). Only set on a real hit -- the no-result branch leaves
+        // everything NULL.
         await query(
           `UPDATE pools
               SET swap_count_7d = $1,
                   active_liquidity_distribution = $2::jsonb,
                   fee_tier_verified = $3,
+                  pool_version = 'v3',
                   updated_at = now()
             WHERE id = $4`,
           [result.swapCount7d, dist, result.feeTierFractional, pool.id]
@@ -112,8 +130,8 @@ async function main() {
     await sleep(PER_POOL_DELAY_MS);
   }
 
-  if (skippedChains.size > 0) {
-    console.log(`  Skipped ${skippedChain} pool(s) on chain(s) with no mapped v3 subgraph: ${[...skippedChains].join(", ")}.`);
+  if (skippedPairs.size > 0) {
+    console.log(`  Skipped ${skippedChain} pool(s) on (chain:dex) with no mapped v3 subgraph: ${[...skippedPairs].join(", ")}.`);
   }
   console.log(
     `enrich-pools-subgraph: enriched ${enriched}, ${unknownPool} not in subgraph, ${failed} failed, ` +

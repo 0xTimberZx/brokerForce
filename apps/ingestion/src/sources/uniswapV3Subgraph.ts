@@ -15,19 +15,48 @@
 // pool.liquidityProviderCount is 0 everywhere (why unique_lp_count stays
 // deferred); pool.ticks give tickIdx / liquidityGross / price0.
 
-// Chain -> Uniswap-v3 subgraph deployment ID on The Graph decentralized
-// network. Only the probe-verified, healthy deployments are here; a chain
-// absent from this map is simply not enriched (optimism's published ID was
+// (chain, dex) -> v3(-schema) subgraph deployment ID on The Graph decentralized
+// network, keyed "${chain}:${dex}" (see subgraphKey). Spec 012 routed by chain
+// alone; spec 016 routes by (chain, dex) so the Uniswap-v3-*fork* DEXs on a chain
+// (PancakeSwap v3, Pharaoh v3) enrich through this same client -- they share the
+// v3 subgraph schema (pool.ticks / poolDayDatas), only the deployment differs.
+//
+// Only probe-verified, healthy deployments belong here; a (chain, dex) absent
+// from this map is simply not enriched (optimism's published Uniswap ID was
 // unhealthy on the network at probe time -- "bad indexers" -- so it's omitted
 // until a healthy one is confirmed). canonicalChain() (spec 011) guarantees
-// pools.chain uses exactly these keys.
+// pools.chain uses exactly these chain keys; pools.dex holds the source-reported
+// DEX slug (e.g. "uniswap", "pancakeswap", "pharaoh").
 export const V3_SUBGRAPH_IDS: Readonly<Record<string, string>> = {
-  ethereum: "5zvR82QoaXYFyDEKLZ9t6v9adgnptxYpKpSbxtgVENFV",
-  arbitrum: "FbCGRftH4a3yZugY7TnbYgPJVEv2LvMT6oF1fxPe9aJM",
-  polygon: "3hCPRGf4z88VC5rsBKU5AA9FBBq5nF3jbKJG7VZCbhjm",
-  base: "43Hwfi3dJSoGpyas9VwNoDAv55yjgGrPpNSmbQZArzMG",
-  bsc: "F85MNzUGYqgSHSHRGgeVMNsdnW1KtZSVgFULumXRZTw2",
+  "ethereum:uniswap": "5zvR82QoaXYFyDEKLZ9t6v9adgnptxYpKpSbxtgVENFV",
+  "arbitrum:uniswap": "FbCGRftH4a3yZugY7TnbYgPJVEv2LvMT6oF1fxPe9aJM",
+  "polygon:uniswap": "3hCPRGf4z88VC5rsBKU5AA9FBBq5nF3jbKJG7VZCbhjm",
+  "base:uniswap": "43Hwfi3dJSoGpyas9VwNoDAv55yjgGrPpNSmbQZArzMG",
+  "bsc:uniswap": "F85MNzUGYqgSHSHRGgeVMNsdnW1KtZSVgFULumXRZTw2",
+  // spec 016: PancakeSwap v3 on BSC -- CI-probe-confirmed healthy + full
+  // Uniswap-v3 schema parity (feeTier + ticks + per-day poolDayDatas) against a
+  // real BSC pool. This is the slice's big win: 17 pancake-v3 pools, plus the 19
+  // untagged bsc:uniswap pools the broadened selection now reaches through the
+  // existing bsc:uniswap deployment (also re-confirmed by the probe).
+  "bsc:pancakeswap": "Hv1GncLY5docZoGtXjo4kwbTvxm3MAhVZqBZE4sUT9eZ",
+  // AVALANCHE -- DEFERRED (probe finding 2026-09-18): the only Uniswap-v3
+  // Avalanche subgraph on the decentralized network (3Pwd3cqFKbqKAy...MxebD)
+  // uses a Messari-standardised schema -- `Type Query has no field pool` -- not
+  // the Uniswap-v3 schema enrichPool needs, so it's omitted rather than routed
+  // to a query it can't answer. Avalanche's tick cohort is small anyway (2
+  // uniswap + 2 pharaoh pools; its volume is Trader-Joe/Liquidity-Book bins,
+  // which no v3 subgraph can express). Add "avalanche:uniswap" here once a
+  // Uniswap-v3-schema deployment is confirmed, or via a Messari-schema adapter
+  // (its own effort). Pharaoh (Ramses fork) likewise deferred: no discoverable
+  // deployment + likely schema divergence.
 };
+
+/** PURE: the lookup key for V3_SUBGRAPH_IDS. Lower-cased so a source that reports
+ * "Uniswap"/"PancakeSwap" still matches; canonicalChain already lower-cases the
+ * chain, but we normalise both sides so the map's contract is unambiguous. */
+export function subgraphKey(chain: string, dex: string): string {
+  return `${chain.toLowerCase()}:${dex.toLowerCase()}`;
+}
 
 const GATEWAY_BASE = "https://gateway.thegraph.com/api";
 const REQUEST_TIMEOUT_MS = 10_000;
@@ -147,8 +176,10 @@ export class UniswapV3Subgraph {
     this.url = `${gatewayBase}/${apiKey}/subgraphs/id/${deploymentId}`;
   }
 
-  static forChain(chain: string, apiKey: string, gatewayBase?: string): UniswapV3Subgraph | null {
-    const id = V3_SUBGRAPH_IDS[chain];
+  /** Construct the client for a pool's (chain, dex), or null when that pair has
+   * no mapped v3 subgraph -- the caller then skips the pool (degrade-safe). */
+  static forChainDex(chain: string, dex: string, apiKey: string, gatewayBase?: string): UniswapV3Subgraph | null {
+    const id = V3_SUBGRAPH_IDS[subgraphKey(chain, dex)];
     return id ? new UniswapV3Subgraph(apiKey, id, gatewayBase) : null;
   }
 
