@@ -4,6 +4,7 @@ import {
   versionFromLabels,
   versionFromDexId,
   validatePoolAddress,
+  canonicalPoolAddress,
 } from "./normalize.js";
 
 describe("canonicalChain", () => {
@@ -141,5 +142,33 @@ describe("validatePoolAddress", () => {
 
   it("trims surrounding whitespace before validating", () => {
     expect(validatePoolAddress(`  ${evmAddr}  `, "ethereum")).toBe(evmAddr);
+  });
+});
+
+describe("canonicalPoolAddress (spec 018)", () => {
+  it("lower-cases EVM (0x) addresses -- checksum casing is display-only", () => {
+    expect(canonicalPoolAddress("0xA6Cc3C2531FdaA6Ae1A3CA84c2855806728693e8")).toBe(
+      "0xa6cc3c2531fdaa6ae1a3ca84c2855806728693e8"
+    );
+  });
+
+  it("preserves Solana base58 exactly -- case is significant", () => {
+    const sol = "3XKSnFqaj19VByPcgHWjfkbp1zjoDuydatDucMjmk6EX";
+    expect(canonicalPoolAddress(sol)).toBe(sol);
+  });
+
+  it("trims whitespace and returns null for empty/nullish", () => {
+    expect(canonicalPoolAddress("  0xABC0000000000000000000000000000000000abc  ")).toBe(
+      "0xabc0000000000000000000000000000000000abc"
+    );
+    expect(canonicalPoolAddress("")).toBeNull();
+    expect(canonicalPoolAddress("   ")).toBeNull();
+    expect(canonicalPoolAddress(null)).toBeNull();
+    expect(canonicalPoolAddress(undefined)).toBeNull();
+  });
+
+  it("is idempotent", () => {
+    const once = canonicalPoolAddress("0xA6Cc3C2531FdaA6Ae1A3CA84c2855806728693e8");
+    expect(canonicalPoolAddress(once)).toBe(once);
   });
 });

@@ -17,6 +17,7 @@ export {
   versionFromLabels,
   versionFromDexId,
   validatePoolAddress,
+  canonicalPoolAddress,
 } from "./normalize.js";
 export { FallbackPoolSource } from "./fallbackPoolSource.js";
 export {
