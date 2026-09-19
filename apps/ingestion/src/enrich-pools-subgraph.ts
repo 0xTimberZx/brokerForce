@@ -97,22 +97,19 @@ async function main() {
         // Store [] distribution as NULL (nothing to show) rather than an empty
         // array, so the read path's "no data" check stays a simple NULL test.
         const dist = result.activeLiquidityDistribution.length > 0 ? JSON.stringify(result.activeLiquidityDistribution) : null;
-        // fee_tier_verified (spec 013): the real fee tier from pool.feeTier,
-        // fractional. NULL when the subgraph didn't report it -> consumers fall
-        // back to the fee_tier sentinel. Additive: pools.fee_tier (the identity
-        // key) is never touched here.
+        // fee_tier (spec 019): write the real fee tier from pool.feeTier straight
+        // into the authoritative fee_tier column (no more fee_tier_verified shadow
+        // -- identity is address-based since spec 018). COALESCE-guarded so a
+        // subgraph miss on the fee doesn't wipe a fee we already have.
         //
         // pool_version = 'v3' (spec 016): a pool the v3 subgraph *returned* is
-        // authoritatively a v3(-schema) pool, so confirm the version here. This
-        // progressively fixes the identification gap for untagged (NULL-version)
-        // pools without touching ingest or the identity key (pool_version isn't
-        // part of it). Only set on a real hit -- the no-result branch leaves
-        // everything NULL.
+        // authoritatively a v3(-schema) pool, so confirm the version here. Only
+        // set on a real hit -- the no-result branch leaves everything as-is.
         await query(
           `UPDATE pools
               SET swap_count_7d = $1,
                   active_liquidity_distribution = $2::jsonb,
-                  fee_tier_verified = $3,
+                  fee_tier = COALESCE($3, fee_tier),
                   pool_version = 'v3',
                   updated_at = now()
             WHERE id = $4`,

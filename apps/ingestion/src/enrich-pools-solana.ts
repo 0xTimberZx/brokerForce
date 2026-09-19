@@ -2,7 +2,8 @@
 // daily pipeline, sibling to enrich-pools-subgraph (which is EVM/subgraph-only and
 // never touched here). For Solana Orca + Raydium pools it fills the one column the
 // primary sources (DexScreener / GeckoTerminal) leave at the sentinel:
-//   - fee_tier_verified   (Orca feeRate / Raydium tradeFeeRate -> fractional)
+//   - fee_tier            (Orca feeRate / Raydium tradeFeeRate -> fractional;
+//                          spec 019 writes the real fee straight into fee_tier)
 // and, for genuinely concentrated pools, marks:
 //   - pool_version = 'clmm'   (Orca Whirlpools; Raydium "Concentrated" pools)
 // Raydium "Standard" (AMM-v4 / CPMM) pools get the fee tier but NOT pool_version
@@ -75,13 +76,17 @@ async function main() {
       if (feeTierFractional === null) {
         unknownPool++;
       } else {
-        // pool_version -> 'clmm' only for concentrated pools; NULL stays NULL for
-        // Raydium Standard (constant-product) pools so we never imply ticks they
-        // don't have. Additive: pools.fee_tier (identity key) is never touched.
+        // fee_tier (spec 019): the real fee goes straight into the authoritative
+        // fee_tier column (no fee_tier_verified shadow; identity is address-based
+        // since spec 018). COALESCE-guarded so a missing fee doesn't wipe one we
+        // already have.
+        // pool_version -> 'clmm' only for concentrated pools; NULL leaves the
+        // existing version for Raydium Standard (constant-product) pools so we
+        // never imply ticks they don't have.
         const poolVersion = isConcentrated ? "clmm" : null;
         await query(
           `UPDATE pools
-              SET fee_tier_verified = $1,
+              SET fee_tier = COALESCE($1, fee_tier),
                   pool_version = COALESCE($2, pool_version),
                   updated_at = now()
             WHERE id = $3`,
