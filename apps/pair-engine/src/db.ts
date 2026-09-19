@@ -116,10 +116,10 @@ export async function fetchPriceHistory(
  * so callers write NULL -- not 0 -- for a pair with no pools.
  *
  * fee_tier is stored FRACTIONAL (0.003 = 0.3%; see pool-metrics.ts's UNIT
- * NOTE), so SUM(volume * fee) is directly USD/day. The effective fee prefers
- * the subgraph-verified tier (spec 013): COALESCE(fee_tier_verified, fee_tier)
- * -- fee_tier is 0/UNKNOWN for most DexScreener rows, which used to zero out
- * fee_opportunity; fee_tier_verified fills it for enriched Uniswap-v3 pools.
+ * NOTE), so SUM(volume * fee) is directly USD/day. Since spec 019 fee_tier is the
+ * single authoritative fee (enrichment writes the real tier straight into it);
+ * pools whose fee is unknown hold NULL, so `volume * fee_tier` is NULL for them
+ * and drops out of the SUM -- honest (we don't guess a fee) and no more 0 sentinel.
  */
 export async function fetchPoolAggregates(pairId: string): Promise<PoolAggregates | null> {
   const rows = await query<{
@@ -132,7 +132,7 @@ export async function fetchPoolAggregates(pairId: string): Promise<PoolAggregate
     `SELECT
        COALESCE(SUM(tvl), 0)              AS pool_tvl,
        COALESCE(SUM(volume), 0)           AS pool_volume,
-       COALESCE(SUM(volume * COALESCE(fee_tier_verified, fee_tier)), 0) AS gross_daily_fees,
+       COALESCE(SUM(volume * fee_tier), 0) AS gross_daily_fees,
        COALESCE(MAX(volume), 0)           AS top_pool_volume,
        COUNT(*)                          AS n
      FROM pools

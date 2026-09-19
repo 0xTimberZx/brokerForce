@@ -101,6 +101,9 @@ async function upsertPoolWithSnapshot(pairId: string, raw: RawPoolData): Promise
   // physical pools that share (pair, dex, chain, fee_tier=0) no longer collapse
   // onto one row.
   const address = canonicalPoolAddress(raw.address);
+  // spec 019: never store the 0 sentinel -- a fee we don't know is NULL, not 0.
+  // (No pool charges a 0% fee, so 0 only ever meant "unknown".)
+  const feeTier = raw.feeTier && raw.feeTier > 0 ? raw.feeTier : null;
   const rows =
     address !== null
       ? await query<{ id: string }>(
@@ -110,16 +113,19 @@ async function upsertPoolWithSnapshot(pairId: string, raw: RawPoolData): Promise
              tvl = EXCLUDED.tvl,
              volume = EXCLUDED.volume,
              active_liquidity = EXCLUDED.active_liquidity,
-             fee_tier = EXCLUDED.fee_tier,
+             -- Preserve an already-known fee (e.g. enrichment's) when this ingest
+             -- has none, rather than clobbering it with NULL -- a fixed pool's fee
+             -- doesn't change, and enrichment runs after ingest each cycle.
+             fee_tier = COALESCE(EXCLUDED.fee_tier, pools.fee_tier),
              pool_version = EXCLUDED.pool_version,
              updated_at = now()
            RETURNING id`,
-          [pairId, raw.dex, raw.chain, raw.feeTier, raw.tvl, raw.volume, raw.activeLiquidity, address, raw.version]
+          [pairId, raw.dex, raw.chain, feeTier, raw.tvl, raw.volume, raw.activeLiquidity, address, raw.version]
         )
       : await query<{ id: string }>(
-          // No address yet: keep migration-002 behaviour (de-dupe on the fee-tier
-          // key). pool_address stays NULL, so this matches the address-less
-          // partial index.
+          // No address yet: keep the fee-tier identity path (spec 018's address-less
+          // partial index, recreated NULLS NOT DISTINCT in migration 015 so NULL
+          // fees de-dupe). pool_address stays NULL.
           `INSERT INTO pools (pair_id, dex, chain, fee_tier, tvl, volume, active_liquidity, pool_address, pool_version, updated_at)
            VALUES ($1, $2, $3, $4, $5, $6, $7, NULL, $8, now())
            ON CONFLICT (pair_id, dex, chain, fee_tier) WHERE pool_address IS NULL DO UPDATE SET
@@ -129,7 +135,7 @@ async function upsertPoolWithSnapshot(pairId: string, raw: RawPoolData): Promise
              pool_version = EXCLUDED.pool_version,
              updated_at = now()
            RETURNING id`,
-          [pairId, raw.dex, raw.chain, raw.feeTier, raw.tvl, raw.volume, raw.activeLiquidity, raw.version]
+          [pairId, raw.dex, raw.chain, feeTier, raw.tvl, raw.volume, raw.activeLiquidity, raw.version]
         );
   const pool = rows[0];
   if (!pool) {
