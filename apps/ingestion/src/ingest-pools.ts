@@ -32,6 +32,7 @@ import { query, closePool } from "@brokerforce/db";
 import {
   defaultPoolSource,
   PoolSourceUnavailableError,
+  canonicalPoolAddress,
   type PoolSource,
   type RawPoolData,
 } from "@brokerforce/pool-sources";
@@ -93,19 +94,43 @@ async function loadContractRegistry(): Promise<ContractRegistry> {
 }
 
 async function upsertPoolWithSnapshot(pairId: string, raw: RawPoolData): Promise<void> {
-  const rows = await query<{ id: string }>(
-    `INSERT INTO pools (pair_id, dex, chain, fee_tier, tvl, volume, active_liquidity, pool_address, pool_version, updated_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, now())
-     ON CONFLICT (pair_id, dex, chain, fee_tier) DO UPDATE SET
-       tvl = EXCLUDED.tvl,
-       volume = EXCLUDED.volume,
-       active_liquidity = EXCLUDED.active_liquidity,
-       pool_address = EXCLUDED.pool_address,
-       pool_version = EXCLUDED.pool_version,
-       updated_at = now()
-     RETURNING id`,
-    [pairId, raw.dex, raw.chain, raw.feeTier, raw.tvl, raw.volume, raw.activeLiquidity, raw.address, raw.version]
-  );
+  // spec 018: identity is the on-chain address when we have one. Canonicalise it
+  // (lower-case EVM, preserve Solana base58) so it matches the (chain,
+  // pool_address) unique index regardless of source casing. Two upsert paths --
+  // one per the two partial unique indexes from migration 014 -- so distinct
+  // physical pools that share (pair, dex, chain, fee_tier=0) no longer collapse
+  // onto one row.
+  const address = canonicalPoolAddress(raw.address);
+  const rows =
+    address !== null
+      ? await query<{ id: string }>(
+          `INSERT INTO pools (pair_id, dex, chain, fee_tier, tvl, volume, active_liquidity, pool_address, pool_version, updated_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, now())
+           ON CONFLICT (chain, pool_address) WHERE pool_address IS NOT NULL DO UPDATE SET
+             tvl = EXCLUDED.tvl,
+             volume = EXCLUDED.volume,
+             active_liquidity = EXCLUDED.active_liquidity,
+             fee_tier = EXCLUDED.fee_tier,
+             pool_version = EXCLUDED.pool_version,
+             updated_at = now()
+           RETURNING id`,
+          [pairId, raw.dex, raw.chain, raw.feeTier, raw.tvl, raw.volume, raw.activeLiquidity, address, raw.version]
+        )
+      : await query<{ id: string }>(
+          // No address yet: keep migration-002 behaviour (de-dupe on the fee-tier
+          // key). pool_address stays NULL, so this matches the address-less
+          // partial index.
+          `INSERT INTO pools (pair_id, dex, chain, fee_tier, tvl, volume, active_liquidity, pool_address, pool_version, updated_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, NULL, $8, now())
+           ON CONFLICT (pair_id, dex, chain, fee_tier) WHERE pool_address IS NULL DO UPDATE SET
+             tvl = EXCLUDED.tvl,
+             volume = EXCLUDED.volume,
+             active_liquidity = EXCLUDED.active_liquidity,
+             pool_version = EXCLUDED.pool_version,
+             updated_at = now()
+           RETURNING id`,
+          [pairId, raw.dex, raw.chain, raw.feeTier, raw.tvl, raw.volume, raw.activeLiquidity, raw.version]
+        );
   const pool = rows[0];
   if (!pool) {
     throw new Error(`pools upsert for pair ${pairId} (${raw.dex}/${raw.chain}) returned no row`);

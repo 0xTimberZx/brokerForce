@@ -124,3 +124,23 @@ export function validatePoolAddress(
   // Unknown / non-EVM-non-Solana: no format to check against -> keep it.
   return addr;
 }
+
+/** Chain-aware CANONICAL form of a pool address, for use as an identity key
+ * (spec 018). Casing rules differ by address family:
+ *
+ *   - EVM (`0x`-prefixed hex): EIP-55 checksum capitalisation is display-only,
+ *     so `0xAbC…` and `0xabc…` are the SAME contract -> lower-case for a stable
+ *     key. (Every 0x-hex chain we see -- EVM, Starknet, Sui/Aptos -- is
+ *     case-insensitive; none has a case-significant 0x address.)
+ *   - Everything else (Solana + other base58): case is SIGNIFICANT -- base58
+ *     distinguishes `Ab` from `AB` -- so the value is preserved EXACTLY.
+ *
+ * The `0x` prefix alone is a safe discriminator: base58 addresses never start
+ * with `0x`. null/empty -> null. Applied on write (ingest) so a pool's stored
+ * address matches the (chain, pool_address) unique index regardless of the
+ * casing a source happened to hand back. */
+export function canonicalPoolAddress(address: string | null | undefined): string | null {
+  const addr = (address ?? "").trim();
+  if (addr === "") return null;
+  return addr.startsWith("0x") ? addr.toLowerCase() : addr;
+}
