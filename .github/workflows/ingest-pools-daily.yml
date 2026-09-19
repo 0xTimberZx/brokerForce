@@ -77,6 +77,7 @@ jobs:
           npm run compute-metrics
           npm run ingest-pools
           npm run enrich-pools-subgraph
+          npm run enrich-pools-solana
           npm run compute-ort
 
       # Market sentiment (Fear & Greed) is an INDEPENDENT cog -- it doesn't
