@@ -59,3 +59,55 @@ today. Everything is idempotent — a manually re-triggered run is safe.
 below the bar but never demotes automatically — the demotion policy
 (immediate? hysteresis? grace period?) is an open product decision. Watch the
 logs and decide with real data.
+
+## Scheduler reliability — Supabase watchdog (belt-and-suspenders)
+
+GitHub's cron scheduler is best-effort: it silently **dropped this repo's
+scheduled runs for 13 days** (2026-09-24 → 2026-10-07) while the workflow still
+showed `state: active`. Scores froze with no failure to alert on. GitHub also
+auto-disables a workflow's *schedule* after 60 days of repo inactivity (manual
+`workflow_dispatch` keeps working regardless).
+
+So an **external watchdog in Supabase** re-triggers the pipeline when — and only
+when — the data has actually gone stale. It rides `pg_cron` + `pg_net` +
+`supabase_vault` (all already enabled on the project):
+
+- **`public.trigger_github_ingest_if_stale(max_age_hours int default 26)`** — a
+  `SECURITY DEFINER` function that checks `max(ort_scores.computed_at)` (the
+  pipeline's *last* step, so freshness there means the whole run succeeded). If
+  fresh, it no-ops. If stale, it reads a GitHub token from Vault and `pg_net`
+  POSTs a `workflow_dispatch` (`ref: main`) to `ingest-pools-daily.yml`.
+- **`cron.job` `brokerforce-ingest-watchdog`** — runs it every 3 hours
+  (`0 */3 * * *`). Recovery latency after a GitHub miss is ≤3h instead of
+  indefinite. No wasted runs: when GitHub's own 06:00 cron works, `ort_scores`
+  is fresh and the watchdog does nothing. The workflow's `concurrency` group
+  (`cancel-in-progress: false`) means a rare overlap just queues; the pipeline
+  is idempotent either way.
+
+GitHub's native 06:00 cron is **left in place as the primary**; the watchdog is
+the safety net.
+
+### One-time token setup (do this once, in the Supabase SQL editor)
+
+The watchdog needs a GitHub token to dispatch. Store it in Vault — never in the
+repo or a chat:
+
+1. Create a **fine-grained PAT** scoped to `0xTimberZx/brokerForce` with
+   **Repository permissions → Actions: Read and write** (Metadata: Read is
+   included automatically). No other scopes.
+2. In Supabase → SQL Editor, run (paste the token in place of `ghp_…`):
+   ```sql
+   select vault.create_secret(
+     'ghp_your_token_here',
+     'github_actions_dispatch_token',
+     'GitHub fine-grained PAT (Actions:write) for the ingest watchdog'
+   );
+   ```
+3. Rotate by updating that Vault secret; nothing else changes.
+
+Until the secret exists the watchdog raises a clear error *only if it fires
+while stale* — while scores are fresh it simply no-ops, so there's no rush and
+no noise. Verify the whole chain by forcing a dispatch:
+`select public.trigger_github_ingest_if_stale(0);` (0h age = always stale) and
+confirm a new "Daily Ingestion" run appears in Actions.
+
