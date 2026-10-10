@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { CanonicalWindow, OrtScore } from "@brokerforce/types";
 import { fetchOrtScoreSafe } from "../api/client";
+import { OrtTrendTags } from "./OrtTrendTags";
 
 interface ORTPreviewChipProps {
   pairId: string;
@@ -53,6 +54,13 @@ export function ORTPreviewChip({ pairId, window }: ORTPreviewChipProps) {
       <span className="w-1.5 h-1.5 rounded-full bg-signal" />
       <span className="text-ink font-medium">{ort.score.toFixed(0)}</span>
       {ort.quadrantLabel && <span className="text-ink-muted text-xs uppercase">{ort.quadrantLabel}</span>}
+      {/* Spec 020: both trend reads, labelled distinctly -- Regime (quadrant,
+          30d vs 90d) and Momentum (score over the last 14d). */}
+      <OrtTrendTags
+        trendDirection={ort.trendDirection}
+        scoreTrend={ort.scoreTrend}
+        scoreTrendChange={ort.scoreTrendChange}
+      />
       {ort.confidence === "low" && <span className="text-ink-muted text-xs italic">low confidence</span>}
     </div>
   );

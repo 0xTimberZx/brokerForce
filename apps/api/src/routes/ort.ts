@@ -25,6 +25,8 @@ interface OrtScoreDbRow {
   score: string;
   quadrant_label: OrtScore["quadrantLabel"];
   trend_direction: OrtScore["trendDirection"];
+  score_trend: OrtScore["scoreTrend"];
+  score_trend_change: string | null;
   component_scores: Record<string, number> | null;
   confidence: "full" | "low";
   computed_at: string;
@@ -37,6 +39,8 @@ function toOrtScore(row: OrtScoreDbRow): OrtScore {
     score: Number(row.score),
     quadrantLabel: row.quadrant_label,
     trendDirection: row.trend_direction,
+    scoreTrend: row.score_trend,
+    scoreTrendChange: row.score_trend_change === null ? null : Number(row.score_trend_change),
     // pg returns JSONB columns already parsed -- {} rather than null if
     // somehow absent, so the frontend breakdown component never has to
     // null-check this specifically (it already handles individual missing
@@ -51,7 +55,8 @@ function toOrtScore(row: OrtScoreDbRow): OrtScore {
 ortRouter.get("/:pairId/ort", async (req, res) => {
   const window = parseWindow(req.query.window);
   const rows = await query<OrtScoreDbRow>(
-    `SELECT pair_id, "window", score, quadrant_label, trend_direction, component_scores, confidence, computed_at
+    `SELECT pair_id, "window", score, quadrant_label, trend_direction, score_trend, score_trend_change,
+            component_scores, confidence, computed_at
      FROM ort_scores WHERE pair_id = $1 AND "window" = $2`,
     [req.params.pairId, window]
   );
@@ -135,13 +140,18 @@ ortRankedRouter.get("/ort", async (req, res) => {
     asset_b: string;
     score: string;
     quadrant_label: OrtScore["quadrantLabel"];
+    trend_direction: OrtScore["trendDirection"];
+    score_trend: OrtScore["scoreTrend"];
+    score_trend_change: string | null;
     confidence: "full" | "low";
     top_pool_tvl: string | null;
   }>(
     // top_pool_tvl = the pair's deepest single pool (spec 014). ORT's liquidity
     // component is asset-level volume, not pool depth, so a "prime" pair can
     // still have no actionable pool; the flag below surfaces that.
+    // Both trend reads ride along (spec 020): regime + momentum.
     `SELECT o.pair_id, p.asset_a, p.asset_b, o.score, o.quadrant_label, o.confidence,
+            o.trend_direction, o.score_trend, o.score_trend_change,
             (SELECT MAX(tvl) FROM pools WHERE pair_id = o.pair_id AND tvl IS NOT NULL) AS top_pool_tvl
      FROM ort_scores o
      JOIN pairs p ON p.id = o.pair_id
@@ -163,6 +173,9 @@ ortRankedRouter.get("/ort", async (req, res) => {
       confidence: r.confidence,
       topPoolTvl,
       thinLiquidity: topPoolTvl === null || topPoolTvl < MIN_ACTIONABLE_POOL_TVL_USD,
+      trendDirection: r.trend_direction,
+      scoreTrend: r.score_trend,
+      scoreTrendChange: r.score_trend_change === null ? null : Number(r.score_trend_change),
     };
   });
 
