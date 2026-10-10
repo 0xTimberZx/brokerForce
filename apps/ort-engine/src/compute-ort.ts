@@ -12,9 +12,10 @@
 
 import "dotenv/config";
 import { closePool } from "@brokerforce/db";
-import { fetchActivePairMetrics, upsertOrtScore, type ActivePairMetricsRow } from "./db.js";
+import { fetchActivePairMetrics, fetchScoreHistoryWindow, upsertOrtScore, type ActivePairMetricsRow } from "./db.js";
 import { computeOrtScore, type OrtScoreInput, type OrtPopulations } from "./score.js";
 import { assignQuadrant, computeTrend, quadrantPopulationConfidence, type QuadrantLabel } from "./quadrant.js";
+import { computeScoreTrend, SCORE_TREND_LOOKBACK_DAYS } from "./score-trend.js";
 
 type Window = 30 | 90 | 200;
 
@@ -128,6 +129,7 @@ async function main() {
   }
 
   let written = 0;
+  const now = new Date();
   for (const [, pairResults] of byPair) {
     const r30 = pairResults.find((r) => r.window === 30);
     const r90 = pairResults.find((r) => r.window === 90);
@@ -142,12 +144,26 @@ async function main() {
 
     for (const r of pairResults) {
       if (r.score === null) continue; // can't satisfy the NOT NULL score constraint -- skip the row entirely
+
+      // Spec 020 momentum: slope of this window's score over the last 14d.
+      // Read the PRIOR history first, then add this run's score as the t=now
+      // point, so the point we're about to append is counted exactly once.
+      // computeScoreTrend returns null (-> "building") when there isn't
+      // enough evidence yet; that's an honest state, not an error.
+      const prior = await fetchScoreHistoryWindow(r.pairId, r.window, SCORE_TREND_LOOKBACK_DAYS);
+      const { trend: scoreTrend, change: scoreTrendChange } = computeScoreTrend(
+        [...prior, { t: now, score: r.score }],
+        now
+      );
+
       await upsertOrtScore({
         pairId: r.pairId,
         window: r.window,
         score: r.score,
         quadrantLabel: r.quadrant,
         trendDirection: r.window === 200 ? null : trend,
+        scoreTrend,
+        scoreTrendChange,
         componentScores: r.componentScores,
         confidence: r.confidence,
       });

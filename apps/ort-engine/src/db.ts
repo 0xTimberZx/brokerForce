@@ -1,5 +1,6 @@
 import { query } from "@brokerforce/db";
 import type { QuadrantLabel, TrendDirection } from "./quadrant.js";
+import type { ScoreTrend, ScoreTrendPoint } from "./score-trend.js";
 
 export interface ActivePairMetricsRow {
   pairId: string;
@@ -77,18 +78,25 @@ export interface OrtScoreUpsert {
   score: number;
   quadrantLabel: QuadrantLabel | null;
   trendDirection: TrendDirection | null;
+  // Spec 020 momentum -- computed by the caller from prior history + this
+  // score BEFORE the write, so both tables get it in the same pass (no
+  // post-hoc update, no risk of counting the just-appended point twice).
+  scoreTrend: ScoreTrend | null;
+  scoreTrendChange: number | null;
   componentScores: Record<string, number>;
   confidence: "full" | "low";
 }
 
 export async function upsertOrtScore(row: OrtScoreUpsert): Promise<void> {
   await query(
-    `INSERT INTO ort_scores (pair_id, "window", score, quadrant_label, trend_direction, component_scores, confidence, computed_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, now())
+    `INSERT INTO ort_scores (pair_id, "window", score, quadrant_label, trend_direction, score_trend, score_trend_change, component_scores, confidence, computed_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, now())
      ON CONFLICT (pair_id, "window") DO UPDATE SET
        score = EXCLUDED.score,
        quadrant_label = EXCLUDED.quadrant_label,
        trend_direction = EXCLUDED.trend_direction,
+       score_trend = EXCLUDED.score_trend,
+       score_trend_change = EXCLUDED.score_trend_change,
        component_scores = EXCLUDED.component_scores,
        confidence = EXCLUDED.confidence,
        computed_at = now()`,
@@ -98,6 +106,8 @@ export async function upsertOrtScore(row: OrtScoreUpsert): Promise<void> {
       row.score,
       row.quadrantLabel,
       row.trendDirection,
+      row.scoreTrend,
+      row.scoreTrendChange,
       JSON.stringify(row.componentScores),
       row.confidence,
     ]
@@ -109,8 +119,36 @@ export async function upsertOrtScore(row: OrtScoreUpsert): Promise<void> {
   // component_scores column here -- the sparkline only needs score/quadrant
   // over time, not a full historical breakdown at every point.
   await query(
-    `INSERT INTO ort_score_history (pair_id, "window", score, quadrant_label, trend_direction, confidence, computed_at)
-     VALUES ($1, $2, $3, $4, $5, $6, now())`,
-    [row.pairId, row.window, row.score, row.quadrantLabel, row.trendDirection, row.confidence]
+    `INSERT INTO ort_score_history (pair_id, "window", score, quadrant_label, trend_direction, score_trend, score_trend_change, confidence, computed_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, now())`,
+    [
+      row.pairId,
+      row.window,
+      row.score,
+      row.quadrantLabel,
+      row.trendDirection,
+      row.scoreTrend,
+      row.scoreTrendChange,
+      row.confidence,
+    ]
   );
+}
+
+/** Prior score history for one (pair, window) within the last `days` --
+ * the series the momentum slope is fitted over (spec 020). Read BEFORE this
+ * run's point is appended, so the caller adds the current score itself as
+ * the t=now point and nothing is counted twice. */
+export async function fetchScoreHistoryWindow(
+  pairId: string,
+  window: 30 | 90 | 200,
+  days: number
+): Promise<ScoreTrendPoint[]> {
+  const rows = await query<{ score: string; computed_at: string }>(
+    `SELECT score, computed_at
+     FROM ort_score_history
+     WHERE pair_id = $1 AND "window" = $2 AND computed_at >= now() - ($3 || ' days')::interval
+     ORDER BY computed_at ASC`,
+    [pairId, window, String(days)]
+  );
+  return rows.map((r) => ({ t: new Date(r.computed_at), score: Number(r.score) }));
 }

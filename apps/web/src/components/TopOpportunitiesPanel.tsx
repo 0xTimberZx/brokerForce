@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import type { OrtRankedPair } from "@brokerforce/types";
 import { fetchOrtRanked } from "../api/client";
 import { QuoteLensToggle, type QuoteLens } from "./QuoteLensToggle";
+import { OrtTrendTags } from "./OrtTrendTags";
 
 type PanelState =
   | { status: "loading" }
@@ -107,6 +108,13 @@ export function TopOpportunitiesPanel() {
                     {p.quadrantLabel && (
                       <span className="text-[10px] uppercase tracking-wide text-ink-muted">{p.quadrantLabel}</span>
                     )}
+                    {/* Spec 020: Regime (quadrant trend) + Momentum (score trend),
+                        kept up front together, labelled distinctly. */}
+                    <OrtTrendTags
+                      trendDirection={p.trendDirection}
+                      scoreTrend={p.scoreTrend}
+                      scoreTrendChange={p.scoreTrendChange}
+                    />
                     {p.confidence === "low" && (
                       <span className="text-[10px] italic text-ink-muted">low conf.</span>
                     )}
@@ -120,7 +128,11 @@ export function TopOpportunitiesPanel() {
           <p className="mt-4 pt-3 border-t border-line font-body text-[11px] leading-relaxed text-ink-muted">
             <span className="text-ink">ORT</span> — a 0–100 score of how attractive a pair is for providing
             liquidity (higher is better). <span className="text-ink">Signal</span> — a plain read: prime
-            (best) · active · quiet · avoid.{" "}
+            (best) · active · quiet · avoid. <span className="text-ink">Regime</span> (↗ ↘ →) — whether the
+            pair's near-term (30d) position sits closer to or further from prime than its longer-term (90d)
+            one. <span className="text-ink">Momentum</span> (↑ ↓ →, with the 14-day change) — whether the
+            score itself has been rising or falling lately, relative to the rest of the board; "building"
+            means there isn't enough history yet.{" "}
             <span className="text-neg">thin liq</span> — the score reflects the price relationship, but the
             pair's deepest on-chain pool is too small to meaningfully provide into.
           </p>

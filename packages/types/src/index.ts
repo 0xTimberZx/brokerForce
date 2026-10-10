@@ -36,6 +36,12 @@ export type QuadrantLabel = "prime" | "active" | "quiet" | "avoid";
 
 export type TrendDirection = "toward-prime" | "away-from-prime" | "flat";
 
+// Spec 020 "momentum": is the pair's ORT SCORE rising or falling over the last
+// 14 days (least-squares slope on ort_score_history). Distinct from
+// TrendDirection, which is a 30d-vs-90d QUADRANT comparison within one run.
+// Relative to peers -- the score is percentile-based.
+export type ScoreTrend = "rising" | "falling" | "flat";
+
 // Per docs/Architecture.md's Pair Engine tiering decision + docs/ORT.md §5.
 // "active" requires a real pool with TVL >= $50,000 and 7d avg volume >= $10,000.
 // "excluded-stable" overrides that bar regardless — stable-stable pairs never
@@ -175,6 +181,10 @@ export interface OrtScore {
   // from the trend comparison, it changes too slowly to be meaningful) --
   // also null if either the 30d or 90d quadrant itself is unavailable.
   trendDirection: TrendDirection | null;
+  // Spec 020 momentum: null = not enough score history yet ("building").
+  // scoreTrendChange is the projected change in points over the 14d lookback.
+  scoreTrend: ScoreTrend | null;
+  scoreTrendChange: number | null;
   // A component key is absent (not present, not set to 0) if it was
   // excluded from this score and its weight redistributed -- see
   // apps/ort-engine/src/score.ts's renormalization logic.
@@ -209,6 +219,10 @@ export interface OrtRankedPair {
   // so a "prime" pair can still have no actionable on-chain venue. Surfaced so
   // the board can flag it rather than imply a pool that isn't there.
   thinLiquidity: boolean;
+  // Spec 020: both trend reads on the board. Regime (quadrant) + Momentum (score).
+  trendDirection: TrendDirection | null;
+  scoreTrend: ScoreTrend | null;
+  scoreTrendChange: number | null;
 }
 
 // Per docs/API.md §4 / spec2.md -- GET /search grouped results.
