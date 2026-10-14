@@ -9,12 +9,14 @@
 // resampling needed. Classified with a documented deadband, in the spirit of
 // score.ts's trendScore: simple and explainable over a "principled" curve.
 //
-// HONEST CAVEAT: the ORT score is RELATIVE (its components are percentile
-// ranks against the current active-tier population, score.ts). A rising
-// momentum therefore means "getting more attractive relative to peers" -- the
-// pair's own metrics may have improved, or the field around it weakened. It is
-// a useful signal; it is NOT an absolute-fundamentals trend. Copy must not
-// overclaim.
+// HONEST CAVEAT: the ORT score is a MIX (score.ts). Range stability, volume,
+// correlation and market-cap stability (60% of the weight) are absolute; only
+// time in range, liquidity and volatility (40%) are percentile ranks against
+// the current active-tier population. So momentum is mostly an absolute trend
+// -- a market-wide move (e.g. broad volatility denting range stability) can
+// push most of the board the same direction at once -- with a peer-relative
+// part on top: a pair can also move because the field around it shifted.
+// Copy must not claim it's purely either.
 
 export type ScoreTrend = "rising" | "falling" | "flat";
 

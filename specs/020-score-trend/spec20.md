@@ -52,12 +52,15 @@ lookback, classified `rising` / `falling` / `flat` with a deadband.
   is NULL.
 
 ### Honest caveat (documented in code + ORT.md)
-The ORT score is **relative** — its components are percentile ranks against the
-*current* population (`score.ts`). So `score_trend` is **momentum relative to
-peers**: a pair can read `rising` because its own metrics improved *or* because
-the field around it weakened. That's still a useful "getting more/less attractive
-vs the universe" signal, but it is **not** an absolute-fundamentals trend, and the
-copy must not imply otherwise.
+~~The ORT score is **relative** — its components are percentile ranks against the
+*current* population.~~ **Corrected after launch:** the score is a **mix**
+(`score.ts`). Range stability, volume, correlation and market-cap stability (60% of
+the weight) are **absolute**; only time in range, liquidity and volatility (40%) are
+percentile ranks against the current population. So `score_trend` is **mostly an
+absolute trend with a peer-relative component**: a market-wide shift can move most
+of the board the same way at once (the first live read, Oct 13, was 58 falling /
+21 flat / 18 rising as the mean score slid 53.2 → 49.3), and a pair can also move
+because the field around it shifted. Copy must not claim it's purely either.
 
 ## Why keep BOTH trends
 They measure different things and are both legitimate:

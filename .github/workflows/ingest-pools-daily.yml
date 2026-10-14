@@ -15,7 +15,11 @@ name: Daily Ingestion
 
 on:
   schedule:
-    - cron: "0 6 * * *" # daily at 06:00 UTC
+    # 06:17, not 06:00: GitHub warns top-of-the-hour schedules are the likeliest
+    # to be delayed or dropped under load. Editing this line also re-registers
+    # the schedule -- it silently stopped firing after 2026-09-24 (every run
+    # since came from the Supabase watchdog, docs/ingestion-automation.md).
+    - cron: "17 6 * * *" # daily at 06:17 UTC
   workflow_dispatch: {}
 
 concurrency:
