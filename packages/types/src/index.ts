@@ -39,7 +39,8 @@ export type TrendDirection = "toward-prime" | "away-from-prime" | "flat";
 // Spec 020 "momentum": is the pair's ORT SCORE rising or falling over the last
 // 14 days (least-squares slope on ort_score_history). Distinct from
 // TrendDirection, which is a 30d-vs-90d QUADRANT comparison within one run.
-// Relative to peers -- the score is percentile-based.
+// Mostly absolute (60% of ORT weight is absolute metrics), partly relative to
+// peers (40% is percentile-ranked) -- see apps/ort-engine/src/score.ts.
 export type ScoreTrend = "rising" | "falling" | "flat";
 
 // Per docs/Architecture.md's Pair Engine tiering decision + docs/ORT.md §5.

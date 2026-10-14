@@ -28,7 +28,7 @@ flaw; the current one refuses to run without a real `DATABASE_URL` secret.
 3. Optionally trigger the workflow once by hand (Actions → Daily Ingestion →
    Run workflow) instead of waiting for the schedule.
 
-## What runs daily (`.github/workflows/ingest-pools-daily.yml`, 06:00 UTC)
+## What runs daily (`.github/workflows/ingest-pools-daily.yml`, 06:17 UTC)
 
 | Step | Command | What it does |
 |---|---|---|
@@ -79,13 +79,23 @@ when — the data has actually gone stale. It rides `pg_cron` + `pg_net` +
   POSTs a `workflow_dispatch` (`ref: main`) to `ingest-pools-daily.yml`.
 - **`cron.job` `brokerforce-ingest-watchdog`** — runs it every 3 hours
   (`0 */3 * * *`). Recovery latency after a GitHub miss is ≤3h instead of
-  indefinite. No wasted runs: when GitHub's own 06:00 cron works, `ort_scores`
+  indefinite. No wasted runs: when GitHub's own 06:17 cron works, `ort_scores`
   is fresh and the watchdog does nothing. The workflow's `concurrency` group
   (`cancel-in-progress: false`) means a rare overlap just queues; the pipeline
   is idempotent either way.
 
-GitHub's native 06:00 cron is **left in place as the primary**; the watchdog is
+GitHub's native 06:17 cron is **left in place as the primary**; the watchdog is
 the safety net.
+
+**It has already earned its keep:** GitHub's schedule silently stopped firing
+after 2026-09-24 (workflow still `active`, cron unchanged). Every run from #102
+on was a watchdog dispatch. The tell is drift: because the watchdog fires at the
+first 3-hourly check past 26h stale, runs walk ~27h later each day (12:00 →
+15:00 → 18:00 UTC) — ~6 runs/week instead of 7. If you see that pattern, or
+`gh api "repos/0xTimberZx/brokerForce/actions/workflows/ingest-pools-daily.yml/runs?event=schedule&per_page=1"`
+shows a stale last run, edit the `cron:` line (any change re-registers it). The
+cron sits at :17 rather than :00 because GitHub warns top-of-the-hour schedules
+are the likeliest to be delayed or dropped.
 
 ### One-time token setup (do this once, in the Supabase SQL editor)
 

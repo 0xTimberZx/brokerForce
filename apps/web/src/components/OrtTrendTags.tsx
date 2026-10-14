@@ -45,7 +45,7 @@ export function OrtTrendTags({ trendDirection, scoreTrend, scoreTrendChange }: O
       {momentum ? (
         <span
           className={`text-[10px] uppercase tracking-wide tabular-nums ${momentum.cls}`}
-          title={`Momentum: score ${scoreTrend} over the last 14 days (relative to peers — the ORT score is percentile-based)`}
+          title={`Momentum: score ${scoreTrend} over the last 14 days (reflects both the pair's own metrics and market-wide moves; part of the score is ranked against peers)`}
         >
           {momentum.glyph} {scoreTrendChange !== null ? `${fmtTrendChange(scoreTrendChange)} / 14d` : scoreTrend}
         </span>

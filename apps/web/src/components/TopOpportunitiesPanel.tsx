@@ -131,8 +131,9 @@ export function TopOpportunitiesPanel() {
             (best) · active · quiet · avoid. <span className="text-ink">Regime</span> (↗ ↘ →) — whether the
             pair's near-term (30d) position sits closer to or further from prime than its longer-term (90d)
             one. <span className="text-ink">Momentum</span> (↑ ↓ →, with the 14-day change) — whether the
-            score itself has been rising or falling lately, relative to the rest of the board; "building"
-            means there isn't enough history yet.{" "}
+            score itself has been rising or falling lately — driven by the pair's own metrics, broad market
+            moves, and partly by how it ranks against the rest of the board; "building" means there isn't
+            enough history yet.{" "}
             <span className="text-neg">thin liq</span> — the score reflects the price relationship, but the
             pair's deepest on-chain pool is too small to meaningfully provide into.
           </p>

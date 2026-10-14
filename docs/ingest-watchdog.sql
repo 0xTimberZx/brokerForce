@@ -56,6 +56,6 @@ REVOKE EXECUTE ON FUNCTION public.trigger_github_ingest_if_stale(int) FROM publi
 REVOKE EXECUTE ON FUNCTION public.trigger_github_ingest_if_stale(int) FROM anon, authenticated;
 
 -- Every 3 hours: dispatch only if stale -> ≤3h recovery after a GitHub miss,
--- zero wasted runs when GitHub's own 06:00 cron worked.
+-- zero wasted runs when GitHub's own 06:17 cron worked.
 SELECT cron.schedule('brokerforce-ingest-watchdog', '0 */3 * * *',
   $$ SELECT public.trigger_github_ingest_if_stale(); $$);
