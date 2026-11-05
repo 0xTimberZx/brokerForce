@@ -17,9 +17,10 @@ import type { CanonicalWindow } from "@brokerforce/types";
 import {
   fetchActivePairs,
   fetchAllAssets,
-  fetchPoolAggregates,
+  fetchAllPoolAggregates,
   fetchPriceHistory,
-  upsertPairMetrics,
+  upsertPairMetricsBatch,
+  type PairMetricsRow,
   type PriceRow,
 } from "./db.js";
 import { poolMetricFields, type PoolMetricFields } from "./pool-metrics.js";
@@ -92,7 +93,7 @@ function computeVolumeFields(volumesA: number[], volumesB: number[]) {
   return { avgVolume24h, avgVolume7d, avgVolume30d, volumeTrend, volumeStability };
 }
 
-async function computeForPairAndWindow(
+function computeForPairAndWindow(
   pairId: string,
   assetA: string,
   assetB: string,
@@ -102,7 +103,7 @@ async function computeForPairAndWindow(
   supplyA: number | null,
   supplyB: number | null,
   poolFields: PoolMetricFields
-): Promise<void> {
+): PairMetricsRow | null {
   const { datesA, datesB } = alignByDate(fullHistoryA, fullHistoryB);
 
   // Slice to the requested window (most recent `window` aligned days).
@@ -113,7 +114,7 @@ async function computeForPairAndWindow(
     console.log(
       `  [${assetA}/${assetB}] window=${window}d: only ${slicedA.length} aligned data points -- skipping, too few to compute anything meaningful.`
     );
-    return;
+    return null;
   }
 
   // Confidence: 'full' only if we actually have a full window's worth of
@@ -163,7 +164,7 @@ async function computeForPairAndWindow(
   const ilEstimate = impermanentLossEstimate(closesA, closesB);
   const volumeFields = computeVolumeFields(volumesA, volumesB);
 
-  await upsertPairMetrics({
+  return {
     pairId,
     window,
     correlation,
@@ -191,7 +192,7 @@ async function computeForPairAndWindow(
     feeOpportunityScore: poolFields.feeOpportunityScore,
     volumeShare: poolFields.volumeShare,
     confidence,
-  });
+  };
 }
 
 async function main() {
@@ -214,6 +215,24 @@ async function main() {
   const allAssets = await fetchAllAssets();
   const supplyBySymbol = new Map(allAssets.map((a) => [a.symbol, a.circulatingSupply]));
 
+  // Pool aggregates for every pair in one query, and metric rows written in
+  // batches -- per-pair queries and per-row upserts made this step's wall time
+  // a multiple of runner-to-database latency (see upsertPairMetricsBatch).
+  const poolAggregates = await fetchAllPoolAggregates();
+
+  // Flushed every FLUSH_EVERY rows rather than once at the end, so a failure
+  // late in the run still leaves the earlier pairs' metrics written, as the
+  // per-row loop did.
+  const FLUSH_EVERY = 200;
+  const pending: PairMetricsRow[] = [];
+  let written = 0;
+  async function flush(): Promise<void> {
+    if (pending.length === 0) return;
+    await upsertPairMetricsBatch(pending);
+    written += pending.length;
+    pending.length = 0;
+  }
+
   for (const pair of pairs) {
     const historyA = await getHistory(pair.assetA);
     const historyB = await getHistory(pair.assetB);
@@ -226,12 +245,12 @@ async function main() {
     console.log(`[${pair.assetA}/${pair.assetB}] (tier: ${pair.tier})`);
 
     // Pool aggregates reflect the current snapshot, identical across windows --
-    // fetch and derive them once per pair, then write the same values into all
-    // three window rows (spec10 Fix 1). NULL for a pair with no pools.
-    const poolFields = poolMetricFields(await fetchPoolAggregates(pair.id));
+    // derive them once per pair, then write the same values into all three
+    // window rows (spec10 Fix 1). NULL for a pair with no pools.
+    const poolFields = poolMetricFields(poolAggregates.get(pair.id) ?? null);
 
     for (const window of CANONICAL_WINDOWS) {
-      await computeForPairAndWindow(
+      const row = computeForPairAndWindow(
         pair.id,
         pair.assetA,
         pair.assetB,
@@ -242,9 +261,13 @@ async function main() {
         supplyBySymbol.get(pair.assetB) ?? null,
         poolFields
       );
+      if (row) pending.push(row);
     }
+    if (pending.length >= FLUSH_EVERY) await flush();
   }
+  await flush();
 
+  console.log(`Wrote ${written} pair_metrics rows.`);
   console.log("Metrics computation complete.");
 }
 

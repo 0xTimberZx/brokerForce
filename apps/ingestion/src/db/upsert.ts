@@ -97,8 +97,7 @@ export async function hasSentimentData(source: string): Promise<boolean> {
   return rows.length > 0;
 }
 
-/** Chunked multi-row upsert -- unlike the daily candles' per-row loop, the
- * hourly first-run backfill is ~2,160 rows per asset (90d x 24h); per-row
+/** Chunked multi-row upsert -- the hourly first-run backfill is ~2,160 rows per asset (90d x 24h); per-row
  * round trips to a remote Postgres would dominate the whole ingestion run.
  * The daily top-up (<=48 rows) rides the same path. */
 export async function upsertHourlyPrices(assetSymbol: string, points: HourlyPoint[]): Promise<void> {
@@ -127,29 +126,36 @@ export async function upsertDailyCandles(
   assetSymbol: string,
   candles: DailyCandle[]
 ): Promise<void> {
-  // Plain per-row upserts, not a multi-row INSERT, since lookback windows are
-  // small (≤200 rows per asset per run) and this only runs once daily per
-  // asset -- not worth the complexity of batching until ingestion frequency
-  // or asset count grows enough that this loop is measurably slow.
-  for (const candle of candles) {
+  // Chunked multi-row upsert, same shape as upsertHourlyPrices below. This
+  // used to be one INSERT per candle -- ~200 sequential round trips per asset,
+  // ~7,200 per run -- which made the run's wall time a function of runner-to-
+  // database latency: ~3s/asset from a GitHub runner near the us-west-2
+  // database, ~14s/asset from an east-coast one, enough to push whole runs
+  // past the job timeout. One statement per asset makes it latency-blind.
+  // fetchDailyCandles keys candles by date, so a chunk never holds the same
+  // timestamp twice (which ON CONFLICT DO UPDATE would reject).
+  const CHUNK = 500;
+  for (let start = 0; start < candles.length; start += CHUNK) {
+    const chunk = candles.slice(start, start + CHUNK);
+    const values: string[] = [];
+    const params: unknown[] = [assetSymbol];
+    for (const c of chunk) {
+      const base = params.length;
+      params.push(`${c.date}T00:00:00Z`, c.open, c.high, c.low, c.close, c.volume);
+      values.push(
+        `($1, $${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6})`
+      );
+    }
     await query(
       `INSERT INTO asset_price_history (asset_symbol, "timestamp", open, high, low, close, volume)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       VALUES ${values.join(", ")}
        ON CONFLICT (asset_symbol, "timestamp") DO UPDATE SET
          open = EXCLUDED.open,
          high = EXCLUDED.high,
          low = EXCLUDED.low,
          close = EXCLUDED.close,
          volume = EXCLUDED.volume`,
-      [
-        assetSymbol,
-        `${candle.date}T00:00:00Z`,
-        candle.open,
-        candle.high,
-        candle.low,
-        candle.close,
-        candle.volume,
-      ]
+      params
     );
   }
 }
