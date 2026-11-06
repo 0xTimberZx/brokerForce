@@ -44,10 +44,12 @@ export function PoolListTable({ pools, onSelectPool }: PoolListTableProps) {
     <button
       type="button"
       onClick={() => handleSort(key)}
-      className="flex items-center gap-1 font-mono text-xs uppercase tracking-wider text-ink-muted hover:text-ink"
+      className="inline-flex items-center gap-1 font-mono text-xs uppercase tracking-wider text-ink-muted hover:text-ink"
     >
-      {label}
+      {/* Arrow sits left of the label so the label's right edge lines up with
+          the right-aligned numbers below it, sorted or not. */}
       {sortKey === key && <span>{sortDesc ? "↓" : "↑"}</span>}
+      {label}
     </button>
   );
 
@@ -56,11 +58,13 @@ export function PoolListTable({ pools, onSelectPool }: PoolListTableProps) {
       <thead>
         <tr className="border-b border-line text-left">
           <th className="py-2 pr-4 font-mono text-xs uppercase tracking-wider text-ink-muted">DEX / Chain</th>
-          <th className="py-2 pr-4">{headerButton("feeTier", "Fee tier")}</th>
-          <th className="py-2 pr-4">{headerButton("tvl", "TVL")}</th>
-          <th className="py-2 pr-4">{headerButton("volume", "24h volume")}</th>
-          <th className="py-2 pr-4">{headerButton("activeLiquidity", "Active liquidity")}</th>
-          <th className="py-2 pr-4">{headerButton("volumeTvlRatio", "Vol/TVL")}</th>
+          {/* Numeric columns are right-aligned (header and cells) so place
+              values line up and figures compare straight down a column. */}
+          <th className="py-2 pl-4 text-right">{headerButton("feeTier", "Fee tier")}</th>
+          <th className="py-2 pl-4 text-right">{headerButton("tvl", "TVL")}</th>
+          <th className="py-2 pl-4 text-right">{headerButton("volume", "24h volume")}</th>
+          <th className="py-2 pl-4 text-right">{headerButton("activeLiquidity", "Active liquidity")}</th>
+          <th className="py-2 pl-4 text-right">{headerButton("volumeTvlRatio", "Vol/TVL")}</th>
         </tr>
       </thead>
       <tbody>
@@ -73,11 +77,11 @@ export function PoolListTable({ pools, onSelectPool }: PoolListTableProps) {
             <td className="py-2 pr-4 font-body text-sm text-ink">
               {pool.dex} <span className="text-ink-muted">· {pool.chain}</span>
             </td>
-            <td className="py-2 pr-4 font-mono text-sm text-ink">{(pool.feeTier * 100).toFixed(2)}%</td>
-            <td className="py-2 pr-4 font-mono text-sm text-ink">{fmtUsd(pool.tvl)}</td>
-            <td className="py-2 pr-4 font-mono text-sm text-ink">{fmtUsd(pool.volume)}</td>
-            <td className="py-2 pr-4 font-mono text-sm text-ink">{fmtUsd(pool.activeLiquidity)}</td>
-            <td className="py-2 pr-4 font-mono text-sm text-ink">
+            <td className="py-2 pl-4 text-right font-mono text-sm text-ink">{(pool.feeTier * 100).toFixed(2)}%</td>
+            <td className="py-2 pl-4 text-right font-mono text-sm text-ink">{fmtUsd(pool.tvl)}</td>
+            <td className="py-2 pl-4 text-right font-mono text-sm text-ink">{fmtUsd(pool.volume)}</td>
+            <td className="py-2 pl-4 text-right font-mono text-sm text-ink">{fmtUsd(pool.activeLiquidity)}</td>
+            <td className="py-2 pl-4 text-right font-mono text-sm text-ink">
               {pool.volumeTvlRatio !== null ? pool.volumeTvlRatio.toFixed(3) : "—"}
             </td>
           </tr>

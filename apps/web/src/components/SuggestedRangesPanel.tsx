@@ -27,13 +27,15 @@ function PresetRow({ preset, assetA, assetB }: { preset: RangePreset; assetA: st
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-1 py-2.5">
       <span className="font-body text-sm text-ink w-28">{PRESET_LABEL[preset.name]}</span>
-      <span className="font-mono text-sm text-signal font-medium w-16 tabular-nums">
+      {/* Fixed-width, right-aligned figure columns so the three preset rows
+          line up digit-for-digit and compare straight down. */}
+      <span className="font-mono text-sm text-signal font-medium w-16 text-right tabular-nums">
         ±{preset.widthPct.toFixed(1)}%
       </span>
-      <span className="font-mono text-xs text-ink-muted tabular-nums">
+      <span className="font-mono text-xs text-ink-muted w-28 text-right tabular-nums">
         in range {(preset.timeInRangePct * 100).toFixed(0)}%
       </span>
-      <span className="font-mono text-xs text-ink-muted tabular-nums">
+      <span className="font-mono text-xs text-ink-muted w-28 text-right tabular-nums">
         ~{Math.round(preset.exitsPerYear)} exits/yr
       </span>
       <Link
