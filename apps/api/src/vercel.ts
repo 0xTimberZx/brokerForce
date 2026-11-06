@@ -7,6 +7,19 @@ import { app } from "./app.js";
 // behind it catches a request that arrives without the prefix.
 const root = express();
 root.disable("x-powered-by");
+
+// Production stays closed until the Phase 1 member gate ships. On Vercel's
+// Hobby plan, Vercel Authentication protects preview deployments only, so the
+// production address would otherwise serve data to anyone. Previews are
+// unaffected; health checks stay open. TERMINAL_PUBLIC=1 lifts the guard,
+// which Phase 1 removes in favour of the real gate.
+root.use((req, res, next) => {
+  const closed = process.env.VERCEL_ENV === "production" && process.env.TERMINAL_PUBLIC !== "1";
+  const path = req.path.replace(/^\/api/, "") || "/";
+  if (!closed || path === "/health") return next();
+  res.status(503).json({ error: "closed", reason: "The terminal opens to group members once sign-in is live." });
+});
+
 root.use("/api", app);
 root.use(app);
 
