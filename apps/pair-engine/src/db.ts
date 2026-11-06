@@ -106,14 +106,14 @@ export async function fetchPriceHistory(
 }
 
 /**
- * Aggregates the pair's pool rows into the four figures poolMetricFields needs.
+ * Aggregates each pair's pool rows into the four figures poolMetricFields needs.
  * The `pools` table already holds one current row per (pair_id,dex,chain,fee_tier)
- * -- the latest snapshot -- so a straight aggregate over WHERE pair_id = $1 is
+ * -- the latest snapshot -- so a straight aggregate per pair_id is
  * "latest snapshot per pool" without any per-pool DISTINCT ON.
  *
  * Rows with NULL tvl OR NULL volume are skipped entirely (can't contribute to
- * either sum honestly). Returns `null` when the pair has no usable pool rows,
- * so callers write NULL -- not 0 -- for a pair with no pools.
+ * either sum honestly). A pair with no usable pool rows is absent from the
+ * returned map, so callers write NULL -- not 0 -- for a pair with no pools.
  *
  * fee_tier is stored FRACTIONAL (0.003 = 0.3%; see pool-metrics.ts's UNIT
  * NOTE), so SUM(volume * fee) is directly USD/day. Since spec 019 fee_tier is the
@@ -121,32 +121,40 @@ export async function fetchPriceHistory(
  * pools whose fee is unknown hold NULL, so `volume * fee_tier` is NULL for them
  * and drops out of the SUM -- honest (we don't guess a fee) and no more 0 sentinel.
  */
-export async function fetchPoolAggregates(pairId: string): Promise<PoolAggregates | null> {
+export async function fetchAllPoolAggregates(): Promise<Map<string, PoolAggregates>> {
+  // One grouped query for every pair instead of one query per pair (~630
+  // sequential round trips per run, which made compute-metrics' wall time
+  // track runner-to-database latency). A pair with no usable pool rows has
+  // no group, so it's simply absent from the map -- callers read that as
+  // null, exactly as the old per-pair COUNT(*) = 0 check did.
   const rows = await query<{
-    pool_tvl: string | null;
-    pool_volume: string | null;
-    gross_daily_fees: string | null;
-    top_pool_volume: string | null;
-    n: string;
+    pair_id: string;
+    pool_tvl: string;
+    pool_volume: string;
+    gross_daily_fees: string;
+    top_pool_volume: string;
   }>(
     `SELECT
+       pair_id,
        COALESCE(SUM(tvl), 0)              AS pool_tvl,
        COALESCE(SUM(volume), 0)           AS pool_volume,
        COALESCE(SUM(volume * fee_tier), 0) AS gross_daily_fees,
-       COALESCE(MAX(volume), 0)           AS top_pool_volume,
-       COUNT(*)                          AS n
+       COALESCE(MAX(volume), 0)           AS top_pool_volume
      FROM pools
-     WHERE pair_id = $1 AND tvl IS NOT NULL AND volume IS NOT NULL`,
-    [pairId]
+     WHERE pair_id IS NOT NULL AND tvl IS NOT NULL AND volume IS NOT NULL
+     GROUP BY pair_id`
   );
-  const row = rows[0];
-  if (!row || Number(row.n) === 0) return null; // pair has no usable pool rows
-  return {
-    poolTvl: Number(row.pool_tvl),
-    poolVolume: Number(row.pool_volume),
-    grossDailyFees: Number(row.gross_daily_fees),
-    topPoolVolume: Number(row.top_pool_volume),
-  };
+  return new Map(
+    rows.map((r) => [
+      r.pair_id,
+      {
+        poolTvl: Number(r.pool_tvl),
+        poolVolume: Number(r.pool_volume),
+        grossDailyFees: Number(r.gross_daily_fees),
+        topPoolVolume: Number(r.top_pool_volume),
+      },
+    ])
+  );
 }
 
 export interface PairMetricsRow {
@@ -181,9 +189,55 @@ export interface PairMetricsRow {
   confidence: "full" | "low";
 }
 
-export async function upsertPairMetrics(row: PairMetricsRow): Promise<void> {
-  await query(
-    `INSERT INTO pair_metrics (
+/** Rows per INSERT. 26 params each -> 5,200 per statement, far under
+ * Postgres' 65,535 bind-parameter cap. */
+const PAIR_METRICS_CHUNK = 200;
+
+/** Chunked multi-row upsert of pair_metrics. Replaces one INSERT per
+ * (pair, window) -- ~1,900 sequential round trips per run -- with ~10.
+ * Rows must be unique on (pair_id, window) within a call (ON CONFLICT DO
+ * UPDATE rejects touching the same row twice in one statement); the
+ * compute loop produces exactly one row per pair per window. */
+export async function upsertPairMetricsBatch(rows: PairMetricsRow[]): Promise<void> {
+  for (let start = 0; start < rows.length; start += PAIR_METRICS_CHUNK) {
+    const chunk = rows.slice(start, start + PAIR_METRICS_CHUNK);
+    const values: string[] = [];
+    const params: unknown[] = [];
+    for (const row of chunk) {
+      const base = params.length;
+      params.push(
+        row.pairId,
+        row.window,
+        row.correlation,
+        row.beta,
+        row.cointegrationScore,
+        row.historicalVolatility,
+        row.relativeStrength,
+        row.marketCapRatio,
+        row.marketCapRatioStability,
+        row.rangeStability2pct,
+        row.rangeStability5pct,
+        row.rangeStability10pct,
+        row.rangeStability15pct,
+        row.avgTimeInRangeDays,
+        row.estimatedRebalancesPerYear,
+        row.ilEstimate,
+        row.avgVolume24h,
+        row.avgVolume7d,
+        row.avgVolume30d,
+        row.volumeTrend,
+        row.volumeStability,
+        row.volumeTvlRatio,
+        row.feeOpportunity,
+        row.feeOpportunityScore,
+        row.volumeShare,
+        row.confidence,
+      );
+      const placeholders = Array.from({ length: 26 }, (_, i) => `$${base + i + 1}`);
+      values.push(`(${placeholders.join(", ")}, now())`);
+    }
+    await query(
+      `INSERT INTO pair_metrics (
        pair_id, "window", correlation, beta, cointegration_score, historical_volatility,
        relative_strength, market_cap_ratio, market_cap_ratio_stability,
        range_stability_2pct, range_stability_5pct, range_stability_10pct, range_stability_15pct,
@@ -191,10 +245,7 @@ export async function upsertPairMetrics(row: PairMetricsRow): Promise<void> {
        avg_volume_24h, avg_volume_7d, avg_volume_30d, volume_trend, volume_stability,
        volume_tvl_ratio, fee_opportunity, fee_opportunity_score, volume_share,
        confidence, computed_at
-     ) VALUES (
-       $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21,
-       $22, $23, $24, $25, $26, now()
-     )
+     ) VALUES ${values.join(", ")}
      ON CONFLICT (pair_id, "window") DO UPDATE SET
        correlation = EXCLUDED.correlation,
        beta = EXCLUDED.beta,
@@ -221,33 +272,7 @@ export async function upsertPairMetrics(row: PairMetricsRow): Promise<void> {
        volume_share = EXCLUDED.volume_share,
        confidence = EXCLUDED.confidence,
        computed_at = now()`,
-    [
-      row.pairId,
-      row.window,
-      row.correlation,
-      row.beta,
-      row.cointegrationScore,
-      row.historicalVolatility,
-      row.relativeStrength,
-      row.marketCapRatio,
-      row.marketCapRatioStability,
-      row.rangeStability2pct,
-      row.rangeStability5pct,
-      row.rangeStability10pct,
-      row.rangeStability15pct,
-      row.avgTimeInRangeDays,
-      row.estimatedRebalancesPerYear,
-      row.ilEstimate,
-      row.avgVolume24h,
-      row.avgVolume7d,
-      row.avgVolume30d,
-      row.volumeTrend,
-      row.volumeStability,
-      row.volumeTvlRatio,
-      row.feeOpportunity,
-      row.feeOpportunityScore,
-      row.volumeShare,
-      row.confidence,
-    ]
-  );
+      params
+    );
+  }
 }

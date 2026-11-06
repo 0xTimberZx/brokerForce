@@ -29,14 +29,15 @@ concurrency:
 jobs:
   ingest:
     runs-on: ubuntu-latest
-    # A healthy run now takes ~26-27 min: the pair universe grew to ~435
-    # (ingest-pools' 2.5s per-pair throttle alone is ~18 min) and the hourly
-    # price top-up added ~2-3 min of per-asset calls. The old 25 was sized
-    # for ~190 pairs and got outgrown -- the first post-hourly run was
-    # cancelled at exactly 25:00 with its tail (pool snapshots for late
-    # pairs, compute-ort) unfinished. 40 restores real headroom while still
-    # tripping on a genuine hang, same reasoning as before, new arithmetic.
-    timeout-minutes: 40
+    # Run time depends on which region GitHub puts the runner in: the
+    # database is in us-west-2, and the pipeline used to make ~10k sequential
+    # queries, so west-coast runners finished in ~28-33 min while east-coast
+    # ones took ~40 and four were cancelled at the old 40-min limit
+    # (#124-#126, #133). The heaviest loops (daily candles, pair_metrics, pool
+    # aggregates) are now batched; 60 adds headroom for the remaining
+    # per-row work and ingest-pools' ~10.5 min of fixed per-pair throttling,
+    # while still tripping on a genuine hang.
+    timeout-minutes: 60
     steps:
       - name: Require DATABASE_URL secret
         env:

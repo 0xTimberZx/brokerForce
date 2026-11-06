@@ -10,9 +10,9 @@
 // (0.003 = 0.3%). No ×100 / ÷100 conversion is applied anywhere here.
 
 /** Aggregated pool figures for a single pair, summed over its `pools` rows
- * (skipping rows with NULL tvl/volume). `null` from fetchPoolAggregates means
- * the pair has no usable pool rows at all -- distinct from "pools exist but a
- * value works out to 0". */
+ * (skipping rows with NULL tvl/volume). `null` (the pair is absent from
+ * fetchAllPoolAggregates' map) means the pair has no usable pool rows at all
+ * -- distinct from "pools exist but a value works out to 0". */
 export interface PoolAggregates {
   poolTvl: number; // Σ tvl
   poolVolume: number; // Σ volume (24h)
