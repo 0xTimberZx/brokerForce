@@ -15,7 +15,11 @@ export function getPool(): Pool {
           "a Postgres instance with the TimescaleDB extension available."
       );
     }
-    pool = new Pool({ connectionString });
+    // PG_POOL_MAX caps connections per process. The serverless API runs many
+    // short-lived instances against Supabase's transaction pooler, so it sets
+    // a small cap there; everything else keeps node-postgres' default (10).
+    const max = process.env.PG_POOL_MAX ? Number(process.env.PG_POOL_MAX) : undefined;
+    pool = new Pool({ connectionString, ...(max && max > 0 ? { max } : {}) });
   }
   return pool;
 }
