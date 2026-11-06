@@ -84,9 +84,13 @@ function ScoreAndChange({
   }
 
   return (
+    // Fixed-width, right-aligned slots: the change cell varies ("flat", "new",
+    // "▲ 12"), and without a set width it would push the score sideways row to row.
     <span className="flex items-center gap-3">
-      <span className="text-signal font-medium tabular-nums">{current.toFixed(0)}</span>
-      <ChangeIndicator current={current} baseline={baseline} />
+      <span className="w-8 text-right text-signal font-medium tabular-nums">{current.toFixed(0)}</span>
+      <span className="w-10 text-right">
+        <ChangeIndicator current={current} baseline={baseline} />
+      </span>
     </span>
   );
 }
