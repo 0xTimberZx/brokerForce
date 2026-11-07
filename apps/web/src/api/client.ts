@@ -6,6 +6,9 @@
 // page about what's actually true.
 
 import type { PairDetailResponse, PairHistoryResponse, CanonicalWindow, OrtScore, OrtRankedPair, PoolListResponse, PoolWithDerived, PoolHistoryPoint, SearchResponse, BacktestRequest, BacktestResult, RangeSuggestionsResponse, AssetOpportunitiesResponse, SentimentResponse, RegimeResponse } from "@brokerforce/types";
+// Every data call goes through apiFetch: a 401 means the member session
+// ended, and the visitor is sent to /login (spec 022, Phase 1).
+import { apiFetch } from "../auth/session";
 
 // Defaults to the Vite dev proxy (vite.config.ts rewrites /api/* to apps/api
 // with no CORS needed, since the browser only ever talks to the Vite dev
@@ -23,7 +26,7 @@ export class PairNotFoundError extends Error {
 }
 
 async function getJson<T>(path: string): Promise<T> {
-  const res = await fetch(`${API_URL}${path}`);
+  const res = await apiFetch(`${API_URL}${path}`);
   if (res.status === 404) {
     throw new PairNotFoundError("", ""); // caller has the symbols already; see fetchPairDetail
   }
@@ -66,7 +69,7 @@ export async function fetchPairHistory(
  */
 export async function fetchOrtScoreSafe(pairId: string, window: CanonicalWindow): Promise<OrtScore | null> {
   try {
-    const res = await fetch(`${API_URL}/pairs/${pairId}/ort?window=${window}`);
+    const res = await apiFetch(`${API_URL}/pairs/${pairId}/ort?window=${window}`);
     if (!res.ok) return null;
     return (await res.json()) as OrtScore;
   } catch {
@@ -94,7 +97,7 @@ export async function fetchOrtRanked(
  * sentiment is context, not a core surface. */
 export async function fetchSentiment(days = 30): Promise<SentimentResponse | null> {
   try {
-    const res = await fetch(`${API_URL}/sentiment?days=${days}`);
+    const res = await apiFetch(`${API_URL}/sentiment?days=${days}`);
     if (!res.ok) return null;
     return (await res.json()) as SentimentResponse;
   } catch {
@@ -116,7 +119,7 @@ export async function fetchRegime(
       ? `windowDays=${params.windowDays}`
       : `start=${encodeURIComponent(params.start)}&end=${encodeURIComponent(params.end)}`;
   try {
-    const res = await fetch(`${API_URL}/sentiment/regime?${qs}`);
+    const res = await apiFetch(`${API_URL}/sentiment/regime?${qs}`);
     if (!res.ok) return null;
     return (await res.json()) as RegimeResponse;
   } catch {
@@ -142,7 +145,7 @@ export async function fetchPoolsForPair(
   if (filters.minTvl) params.set("minTvl", filters.minTvl);
   const qs = params.toString();
   try {
-    const res = await fetch(`${API_URL}/pairs/${assetA}/${assetB}/pools${qs ? `?${qs}` : ""}`);
+    const res = await apiFetch(`${API_URL}/pairs/${assetA}/${assetB}/pools${qs ? `?${qs}` : ""}`);
     if (res.status === 503) return { status: "unavailable" };
     if (!res.ok) return { status: "error", reason: `HTTP ${res.status}` };
     return { data: await res.json() as PoolListResponse, status: "ok" };
@@ -153,7 +156,7 @@ export async function fetchPoolsForPair(
 
 export async function fetchPoolDetail(poolId: string): Promise<PoolWithDerived | null> {
   try {
-    const res = await fetch(`${API_URL}/pools/${poolId}`);
+    const res = await apiFetch(`${API_URL}/pools/${poolId}`);
     if (!res.ok) return null;
     return await res.json() as PoolWithDerived;
   } catch {
@@ -163,7 +166,7 @@ export async function fetchPoolDetail(poolId: string): Promise<PoolWithDerived |
 
 export async function fetchPoolHistory(poolId: string): Promise<PoolHistoryPoint[]> {
   try {
-    const res = await fetch(`${API_URL}/pools/${poolId}/history`);
+    const res = await apiFetch(`${API_URL}/pools/${poolId}/history`);
     if (!res.ok) return [];
     return await res.json() as PoolHistoryPoint[];
   } catch {
@@ -192,7 +195,7 @@ export type RangeSuggestionsOutcome =
 
 export async function fetchRangeSuggestions(pairId: string): Promise<RangeSuggestionsOutcome> {
   try {
-    const res = await fetch(`${API_URL}/pairs/${pairId}/range-suggestions`);
+    const res = await apiFetch(`${API_URL}/pairs/${pairId}/range-suggestions`);
     const body: unknown = await res.json().catch(() => null);
     if (res.ok) return { status: "ok", data: body as RangeSuggestionsResponse };
     if (res.status === 422) {
@@ -209,7 +212,7 @@ export async function fetchRangeSuggestions(pairId: string): Promise<RangeSugges
 /** 008's asset detail page: profile + ORT-ranked opportunities featuring the
  * asset. Null on 404 (unknown symbol) -- the page renders not-found. */
 export async function fetchAssetOpportunities(symbol: string): Promise<AssetOpportunitiesResponse | null> {
-  const res = await fetch(`${API_URL}/assets/${encodeURIComponent(symbol)}/opportunities`);
+  const res = await apiFetch(`${API_URL}/assets/${encodeURIComponent(symbol)}/opportunities`);
   if (res.status === 404) return null;
   if (!res.ok) throw new Error(`API request failed (${res.status}): /assets/${symbol}/opportunities`);
   return (await res.json()) as AssetOpportunitiesResponse;
@@ -217,7 +220,7 @@ export async function fetchAssetOpportunities(symbol: string): Promise<AssetOppo
 
 export async function runBacktest(req: BacktestRequest): Promise<BacktestRunOutcome> {
   try {
-    const res = await fetch(`${API_URL}/backtest`, {
+    const res = await apiFetch(`${API_URL}/backtest`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(req),
