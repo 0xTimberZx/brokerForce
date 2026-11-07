@@ -53,11 +53,17 @@ function PoolExplorerRoute() {
 function MemberMenu() {
   const name = useMemberName();
   return (
-    <div className="ml-auto flex items-center gap-3">
-      {name && <span className="font-body text-xs text-ink-muted">{name}</span>}
+    <div className="ml-auto flex items-center gap-3 shrink-0">
+      {/* The name can be long (Telegram display names often are), so it's
+          hidden on a phone and truncated elsewhere; Sign out never moves. */}
+      {name && (
+        <span className="hidden md:inline font-body text-xs text-ink-muted max-w-[14rem] truncate" title={name}>
+          {name}
+        </span>
+      )}
       <button
         type="button"
-        className="font-body text-xs text-ink-muted hover:text-ink"
+        className="font-body text-xs text-ink-muted hover:text-ink whitespace-nowrap"
         onClick={async () => {
           await signOut();
           window.location.assign("/login");
@@ -73,23 +79,27 @@ function MemberMenu() {
 function TerminalLayout() {
   return (
     <AuthGate>
+      {/* On a phone the links scroll sideways inside their own strip, so the
+          member menu (and Sign out) always stays on screen. */}
       <nav className="border-b border-line">
-        <div className="max-w-5xl mx-auto px-6 md:px-10 py-3 flex items-center gap-6">
-          <Link to="/" className="font-display text-sm text-ink">
+        <div className="max-w-5xl mx-auto px-4 md:px-10 py-3 flex items-center gap-4">
+          <Link to="/" className="font-display text-sm text-ink shrink-0">
             BrokerForce
           </Link>
-          <Link to="/" className="font-body text-xs text-ink-muted hover:text-ink">
-            Dashboard
-          </Link>
-          <Link to="/watchlist" className="font-body text-xs text-ink-muted hover:text-ink">
-            Watchlist
-          </Link>
-          <Link to="/search" className="font-body text-xs text-ink-muted hover:text-ink">
-            Search
-          </Link>
-          <Link to="/backtest" className="font-body text-xs text-ink-muted hover:text-ink">
-            Backtester
-          </Link>
+          <div className="flex items-center gap-4 md:gap-6 min-w-0 overflow-x-auto whitespace-nowrap [scrollbar-width:none]">
+            <Link to="/" className="font-body text-xs text-ink-muted hover:text-ink">
+              Dashboard
+            </Link>
+            <Link to="/watchlist" className="font-body text-xs text-ink-muted hover:text-ink">
+              Watchlist
+            </Link>
+            <Link to="/search" className="font-body text-xs text-ink-muted hover:text-ink">
+              Search
+            </Link>
+            <Link to="/backtest" className="font-body text-xs text-ink-muted hover:text-ink">
+              Backtester
+            </Link>
+          </div>
           <MemberMenu />
         </div>
       </nav>

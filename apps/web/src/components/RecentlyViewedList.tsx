@@ -12,16 +12,16 @@ export function RecentlyViewedList({ pairs }: { pairs: RecentlyViewedPair[] }) {
   return (
     <section className="border border-line bg-bg-panel p-5">
       <h2 className="font-display text-sm text-ink">Recently viewed</h2>
-      <ul className="mt-4 space-y-2">
+      <ul className="mt-3 divide-y divide-line">
         {pairs.map((p) => (
-          <li key={p.pairId} className="flex items-center justify-between gap-4">
+          <li key={p.pairId} className="flex items-center justify-between gap-4 py-2.5">
             <Link
               to={`/pairs/${p.assetA}/${p.assetB}`}
               className="font-body text-sm text-ink hover:underline underline-offset-4"
             >
               {p.assetA}/{p.assetB}
             </Link>
-            <ORTPreviewChip pairId={p.pairId} window={90} />
+            <ORTPreviewChip pairId={p.pairId} window={90} compact />
           </li>
         ))}
       </ul>
