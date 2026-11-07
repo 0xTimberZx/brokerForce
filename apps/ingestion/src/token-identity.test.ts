@@ -96,3 +96,29 @@ describe("NATIVE_ASSET_FORMS (wrapped/pegged forms of native coins)", () => {
     ).toBe("rejected");
   });
 });
+
+describe("wrapped native forms for BNB and CRO", () => {
+  const BNB_ERC20 = "0xb8c77482e45f1f44de1745f52c74426c631bdd52"; // BNB's only CoinGecko contract
+  const WBNB = NATIVE_ASSET_FORMS.BNB![0]!;
+  const WCRO = NATIVE_ASSET_FORMS.CRO![0]!;
+
+  it("verifies a WBNB/USDC pool when BNB's registry is its ERC-20 plus WBNB", () => {
+    const reg: ContractRegistry = new Map([
+      ["BNB", new Set([BNB_ERC20, WBNB])],
+      ["USDC", new Set([USDC_ETH])],
+    ]);
+    expect(verifyPoolIdentity({ baseTokenAddress: WBNB, quoteTokenAddress: USDC_ETH }, "BNB", "USDC", reg)).toBe("verified");
+  });
+
+  it("would reject WBNB with only the ERC-20 on record (the bug)", () => {
+    const reg: ContractRegistry = new Map([
+      ["BNB", new Set([BNB_ERC20])],
+      ["USDC", new Set([USDC_ETH])],
+    ]);
+    expect(verifyPoolIdentity({ baseTokenAddress: WBNB, quoteTokenAddress: USDC_ETH }, "BNB", "USDC", reg)).toBe("rejected");
+  });
+
+  it("lists well-formed lowercase addresses", () => {
+    for (const a of [WBNB, WCRO]) expect(a).toMatch(/^0x[0-9a-f]{40}$/);
+  });
+});

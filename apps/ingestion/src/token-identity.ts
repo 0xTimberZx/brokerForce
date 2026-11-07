@@ -22,8 +22,9 @@
 export type IdentityVerdict = "verified" | "rejected" | "unverifiable";
 
 /**
- * Canonical on-chain forms of native assets that have no CoinGecko `platforms`
- * contract of their own. A native coin like BTC can't be verified by contract
+ * Canonical on-chain forms of native assets whose CoinGecko `platforms`
+ * contracts don't cover how they trade on their own chain (none at all for
+ * BTC; only a legacy Ethereum ERC-20 for BNB and CRO). A native coin like BTC can't be verified by contract
  * address -- it isn't an ERC-20 -- so its identity check would always abstain,
  * leaving impostor "BTC" pools guarded only by the turnover filter. But BTC
  * *does* trade on DEXes as wrapped/pegged tokens with real, well-known
@@ -40,6 +41,17 @@ export const NATIVE_ASSET_FORMS: Record<string, string[]> = {
   BTC: [
     "0x2260fac5e5542a773aa44fbcfedf7c193bc2c599", // WBTC -- Wrapped BTC (Ethereum)
     "0x7130d2a12b9bcbfae4f2634d864a1ee1ce3ead9c", // BTCB -- Binance-Peg BTC (BNB Chain)
+  ],
+  // BNB and CRO DO have CoinGecko contracts, but only their old Ethereum
+  // ERC-20s. On their own chains they trade as the wrapped native token, so
+  // without these every WBNB (BNB Chain) / WCRO (Cronos) pool was "rejected"
+  // against a verified quote token, and BNB/USDT showed only a thin Ethereum
+  // pool despite deep PancakeSwap liquidity.
+  BNB: [
+    "0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c", // WBNB -- Wrapped BNB (BNB Chain)
+  ],
+  CRO: [
+    "0x5c7f8a570d578ed84e63fdfa7b1ee72deae1ae23", // WCRO -- Wrapped CRO (Cronos)
   ],
 };
 
