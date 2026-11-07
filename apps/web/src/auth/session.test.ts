@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { loginPath, safeNext } from "./session";
+import { loginPath, safeNext, startParamFor } from "./session";
 
 describe("safeNext", () => {
   it("keeps paths on this site, query included", () => {
@@ -24,5 +24,14 @@ describe("loginPath", () => {
   it("carries the deep link through", () => {
     expect(loginPath("/pairs/ETH/XRP?window=30")).toBe("/login?next=%2Fpairs%2FETH%2FXRP%3Fwindow%3D30");
     expect(loginPath("/")).toBe("/login");
+  });
+});
+
+describe("startParamFor", () => {
+  it("matches the API's encoding (base64url of the path)", () => {
+    expect(startParamFor("/pairs/ETH/XRP")).toBe(`l_${Buffer.from("/pairs/ETH/XRP").toString("base64url")}`);
+    expect(startParamFor("/")).toBe("login");
+    expect(startParamFor("//evil.example")).toBe("login");
+    expect(startParamFor("/" + "a".repeat(80))).toBe("login");
   });
 });
