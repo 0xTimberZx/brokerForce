@@ -224,6 +224,15 @@ export interface OrtRankedPair {
   trendDirection: TrendDirection | null;
   scoreTrend: ScoreTrend | null;
   scoreTrendChange: number | null;
+  // Networks (pools.chain) where the pair has a pool at or above the usable
+  // depth floor, deepest first. Empty when it has none.
+  networks: string[];
+}
+
+/** GET /pairs/ort/networks: a network and how many scored pairs it covers. */
+export interface OrtNetworkCount {
+  network: string;
+  pairs: number;
 }
 
 // Per docs/API.md §4 / spec2.md -- GET /search grouped results.

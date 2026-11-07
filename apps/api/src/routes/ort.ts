@@ -119,9 +119,43 @@ export function goldFilterClause(quote: unknown): string {
     : "";
 }
 
+export const ortRankedRouter = Router();
+
+/** A network name as stored in pools.chain: lowercase letters/digits only.
+ * Anything else (or "all") means no network filter. */
+export function parseNetwork(raw: unknown): string | null {
+  const v = String(raw ?? "").toLowerCase();
+  return /^[a-z0-9]{2,20}$/.test(v) && v !== "all" ? v : null;
+}
+
+// "Usable" pools only: a network counts for a pair when the pair has a pool
+// there at or above the same depth floor the thin-liquidity flag uses, so a
+// badge means "you could actually LP this here". 'unknown' chains are left out.
+const USABLE_POOL = `pl.tvl >= ${MIN_ACTIONABLE_POOL_TVL_USD} AND pl.chain <> 'unknown'`;
+
+// GET /pairs/ort/networks?window=90&quote= — the networks that have a usable
+// pool for at least one scored pair, with how many pairs each covers. Feeds
+// the dashboard's network filter. Registered before /ort so the literal
+// segment wins.
+ortRankedRouter.get("/ort/networks", async (req, res) => {
+  const window = parseWindow(req.query.window);
+  const goldClause = goldFilterClause(req.query.quote);
+  const rows = await query<{ network: string; pairs: string }>(
+    `SELECT pl.chain AS network, COUNT(DISTINCT o.pair_id) AS pairs
+     FROM ort_scores o
+     JOIN pairs p ON p.id = o.pair_id
+     JOIN pools pl ON pl.pair_id = o.pair_id
+     WHERE o."window" = $1 AND ${USABLE_POOL}
+     ${goldClause}
+     GROUP BY pl.chain
+     ORDER BY COUNT(DISTINCT o.pair_id) DESC, pl.chain`,
+    [window]
+  );
+  res.json(rows.map((r) => ({ network: r.network, pairs: Number(r.pairs) })));
+});
+
 // GET /pairs/ort?sort=desc&window=90&limit= — note: no :pairId here, this is the ranked list.
 // Mounted separately since it doesn't share the /:pairId/ort path shape.
-export const ortRankedRouter = Router();
 ortRankedRouter.get("/ort", async (req, res) => {
   const window = parseWindow(req.query.window);
   const limit = req.query.limit ? Number(req.query.limit) : 10;
@@ -134,7 +168,14 @@ ortRankedRouter.get("/ort", async (req, res) => {
   // in the table to accidentally include. The gold clause (quote lens) is the
   // only optional restriction -- empty string when the lens is USD/absent.
   const goldClause = goldFilterClause(req.query.quote);
+  const network = parseNetwork(req.query.network);
+  const params: unknown[] = [window, limit];
+  // Network filter: only pairs with a usable pool on that network.
+  const networkClause = network
+    ? `AND EXISTS (SELECT 1 FROM pools pl WHERE pl.pair_id = o.pair_id AND ${USABLE_POOL} AND pl.chain = $${params.push(network)})`
+    : "";
   const rows = await query<{
+    networks: string[] | null;
     pair_id: string;
     asset_a: string;
     asset_b: string;
@@ -152,14 +193,20 @@ ortRankedRouter.get("/ort", async (req, res) => {
     // Both trend reads ride along (spec 020): regime + momentum.
     `SELECT o.pair_id, p.asset_a, p.asset_b, o.score, o.quadrant_label, o.confidence,
             o.trend_direction, o.score_trend, o.score_trend_change,
-            (SELECT MAX(tvl) FROM pools WHERE pair_id = o.pair_id AND tvl IS NOT NULL) AS top_pool_tvl
+            (SELECT MAX(tvl) FROM pools WHERE pair_id = o.pair_id AND tvl IS NOT NULL) AS top_pool_tvl,
+            -- Networks with a usable pool, deepest first.
+            (SELECT ARRAY_AGG(chain ORDER BY depth DESC)
+               FROM (SELECT pl.chain, MAX(pl.tvl) AS depth FROM pools pl
+                     WHERE pl.pair_id = o.pair_id AND ${USABLE_POOL}
+                     GROUP BY pl.chain) d) AS networks
      FROM ort_scores o
      JOIN pairs p ON p.id = o.pair_id
      WHERE o."window" = $1
      ${goldClause}
+     ${networkClause}
      ORDER BY o.score ${sortDesc ? "DESC" : "ASC"}
      LIMIT $2`,
-    [window, limit]
+    params
   );
 
   const ranked: OrtRankedPair[] = rows.map((r) => {
@@ -176,6 +223,7 @@ ortRankedRouter.get("/ort", async (req, res) => {
       trendDirection: r.trend_direction,
       scoreTrend: r.score_trend,
       scoreTrendChange: r.score_trend_change === null ? null : Number(r.score_trend_change),
+      networks: r.networks ?? [],
     };
   });
 
