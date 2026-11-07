@@ -14,6 +14,20 @@ export function safeNext(next: string | null | undefined): string {
   return next;
 }
 
+/** The /start parameter for the bot sign-in link: "login", or "l_" plus the
+ * destination in base64url when it fits Telegram's 64-character limit.
+ * Mirrors apps/api/src/auth/botLink.ts's startParamFor. */
+export function startParamFor(next: string): string {
+  const target = safeNext(next);
+  if (target === "/") return "login";
+  const bytes = new TextEncoder().encode(target);
+  let bin = "";
+  for (const b of bytes) bin += String.fromCharCode(b);
+  const b64 = btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  const param = `l_${b64}`;
+  return param.length <= 64 ? param : "login";
+}
+
 export function loginPath(next: string): string {
   const target = safeNext(next);
   return target === "/" ? "/login" : `/login?next=${encodeURIComponent(target)}`;

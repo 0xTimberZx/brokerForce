@@ -5,6 +5,7 @@ import { request } from "node:http";
 import { createGate, loadAuthMode, type AuthMode } from "./gate.js";
 import { loginHash } from "./telegram.js";
 import { encodeSession } from "./session.js";
+import { startParamFor, webhookSecret } from "./botLink.js";
 import { catchAsyncErrors, errorHandler } from "../http/asyncErrors.js";
 
 const TOKEN = "123456:TEST-throwaway-token";
@@ -17,7 +18,12 @@ const MODE: AuthMode = {
 let clock = 1794000000;
 let telegramStatus: string | "down" = "member";
 let telegramCalls = 0;
-const fakeTelegram = (async () => {
+let sent: { chat_id: number; text: string; reply_markup?: { inline_keyboard: { url: string }[][] } }[] = [];
+const fakeTelegram = (async (url: string, init?: RequestInit) => {
+  if (String(url).endsWith("/sendMessage")) {
+    sent.push(JSON.parse(String(init?.body)));
+    return new Response(JSON.stringify({ ok: true, result: {} }), { status: 200 });
+  }
   telegramCalls++;
   if (telegramStatus === "down") return new Response("{}", { status: 502 });
   return new Response(JSON.stringify({ ok: true, result: { status: telegramStatus } }), { status: 200 });
@@ -49,6 +55,7 @@ beforeEach(() => {
   clock = 1794000000;
   telegramStatus = "member";
   telegramCalls = 0;
+  sent = [];
 });
 
 describe("member gate", () => {
@@ -230,6 +237,97 @@ describe("loadAuthMode", () => {
         req.end();
       });
       expect(status).toBe(401);
+    } finally {
+      close();
+    }
+  });
+});
+
+describe("sign-in through the bot", () => {
+  const update = (text: string, fromId = 42) => ({
+    update_id: 1,
+    message: { message_id: 1, text, chat: { id: fromId, type: "private" }, from: { id: fromId, is_bot: false, first_name: "Ada" } },
+  });
+  const hook = (base: string, body: unknown, secret = webhookSecret(TOKEN)) =>
+    fetch(`${base}/auth/bot/webhook`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-telegram-bot-api-secret-token": secret },
+      body: JSON.stringify(body),
+    });
+
+  it("refuses webhook calls without Telegram's secret", async () => {
+    const { base, close } = await serve();
+    try {
+      expect((await hook(base, update("/start"), "wrong")).status).toBe(401);
+      expect(sent).toHaveLength(0);
+    } finally {
+      close();
+    }
+  });
+
+  it("replies to a member's /start with a link that signs them in and returns them to the deep link", async () => {
+    const { base, close } = await serve();
+    try {
+      const res = await hook(base, update(`/start ${startParamFor("/pairs/ETH/XRP")}`));
+      expect(res.status).toBe(200);
+      expect(sent).toHaveLength(1);
+      expect(sent[0]!.chat_id).toBe(42);
+      const link = sent[0]!.reply_markup!.inline_keyboard[0]![0]!.url;
+      expect(link).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/auth\/bot\/link\?t=/);
+
+      const signIn = await fetch(link, { redirect: "manual" });
+      expect(signIn.status).toBe(302);
+      expect(signIn.headers.get("location")).toMatch(/\/pairs\/ETH\/XRP$/);
+      const cookie = (signIn.headers.get("set-cookie") ?? "").split(";")[0]!;
+      expect((await fetch(`${base}/pairs/ort`, { headers: { cookie } })).status).toBe(200);
+    } finally {
+      close();
+    }
+  });
+
+  it("tells a non-member to ask for an invite, with no link", async () => {
+    const { base, close } = await serve();
+    try {
+      telegramStatus = "left";
+      await hook(base, update("/start login"));
+      expect(sent).toHaveLength(1);
+      expect(sent[0]!.text).toMatch(/isn't in the BrokerForce group/);
+      expect(sent[0]!.reply_markup).toBeUndefined();
+    } finally {
+      close();
+    }
+  });
+
+  it("refuses an expired link, and a link once the person has left", async () => {
+    const { base, close } = await serve();
+    try {
+      await hook(base, update("/start"));
+      const link = sent[0]!.reply_markup!.inline_keyboard[0]![0]!.url;
+      clock += 301;
+      const late = await fetch(link, { redirect: "manual" });
+      expect(late.headers.get("location")).toMatch(/\/login\?error=link_expired$/);
+      expect(late.headers.get("set-cookie")).toBeNull();
+
+      clock -= 301;
+      telegramStatus = "left";
+      // past the 60s member cache, so the link re-checks with Telegram
+      clock += 61;
+      const gone = await fetch(link, { redirect: "manual" });
+      expect(gone.headers.get("location")).toMatch(/\/login\?error=not_member$/);
+    } finally {
+      close();
+    }
+  });
+
+  it("answers other messages with a hint and ignores group chats", async () => {
+    const { base, close } = await serve();
+    try {
+      await hook(base, update("hello"));
+      expect(sent[0]!.text).toMatch(/Send \/start/);
+      const inGroup = update("/start");
+      inGroup.message.chat = { id: -100123, type: "supergroup" };
+      expect((await hook(base, inGroup)).status).toBe(200);
+      expect(sent).toHaveLength(1);
     } finally {
       close();
     }

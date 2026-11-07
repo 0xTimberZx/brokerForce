@@ -1,11 +1,13 @@
-// /login (spec 022, Phase 1): the Telegram Login Widget. The terminal is for
+// /login (spec 022, Phase 1). Two ways in: the bot (primary: a chat with the
+// bot replies with a one-time sign-in link) and the Telegram Login Widget
+// (backup: its phone confirmation doesn't always arrive). The terminal is for
 // members of the BrokerForce Telegram group; the API checks membership with
 // the group's bot, and on success the visitor returns to `next`, which is how
 // a deep link from a group post survives signing in.
 
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { fetchAuthConfig, fetchMe, loginPath, safeNext, signInWithTelegram, type TelegramUser } from "../auth/session";
+import { fetchAuthConfig, fetchMe, loginPath, safeNext, signInWithTelegram, startParamFor, type TelegramUser } from "../auth/session";
 
 type Status =
   | { kind: "loading" }
@@ -36,6 +38,8 @@ export function LoginPage() {
   const navigate = useNavigate();
   const next = safeNext(params.get("next"));
   const [status, setStatus] = useState<Status>({ kind: "loading" });
+  // Set by GET /auth/bot/link when a bot link can't sign someone in.
+  const linkError = params.get("error");
   const widgetRef = useRef<HTMLDivElement>(null);
 
   // Telegram sends the visitor back here with the signed login fields in the
@@ -105,8 +109,39 @@ export function LoginPage() {
       <div className="mt-6 min-h-[48px]">
         {status.kind === "loading" && <p className="font-body text-xs text-ink-muted">Loading…</p>}
         {status.kind === "signing_in" && <p className="font-body text-xs text-ink-muted">Checking membership…</p>}
-        <div ref={widgetRef} hidden={status.kind !== "ready"} />
+        {status.kind === "ready" && (
+          <a
+            href={`https://t.me/${status.botUsername}?start=${startParamFor(next)}`}
+            className="inline-block font-body text-sm text-bg-deep bg-ink px-4 py-2 hover:opacity-90"
+          >
+            Sign in with Telegram
+          </a>
+        )}
+        {status.kind === "ready" && (
+          <p className="font-body text-xs text-ink-muted mt-3">
+            Opens a chat with @{status.botUsername}. Tap Start, and the bot replies with a sign-in link that works for 5
+            minutes.
+          </p>
+        )}
       </div>
+
+      <div hidden={status.kind !== "ready"} className="mt-6 border-t border-line pt-4">
+        <p className="font-body text-xs text-ink-muted mb-3">Or use Telegram's login page:</p>
+        <div ref={widgetRef} />
+      </div>
+
+      {status.kind === "ready" && linkError === "link_expired" && (
+        <Notice>That sign-in link has expired. Send /start to the bot again for a new one.</Notice>
+      )}
+      {status.kind === "ready" && linkError === "not_member" && (
+        <Notice>
+          That Telegram account isn't in the BrokerForce group. The terminal is for group members only; ask an admin for
+          an invite, then sign in again.
+        </Notice>
+      )}
+      {status.kind === "ready" && linkError === "telegram_unavailable" && (
+        <Notice>Telegram couldn't be reached to confirm membership. Try again in a few minutes.</Notice>
+      )}
 
       {status.kind === "not_member" && (
         <Notice>

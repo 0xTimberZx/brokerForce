@@ -1,0 +1,55 @@
+name: Telegram set webhook
+
+# Points the bot's incoming messages at the terminal, for sign-in through the
+# bot (spec 022): a /start to the bot reaches POST /api/auth/bot/webhook,
+# which replies with a one-time sign-in link. Run once after deploying, and
+# again only if the domain changes.
+#
+# The secret Telegram echoes back on every call is derived from the bot token
+# (HMAC-SHA256 of "bf-webhook"), the same way the API derives it, so no extra
+# secret is needed. Once a webhook is set, getUpdates stops working for this
+# bot; that's expected.
+
+on:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: Webhook URL
+        required: false
+        default: "https://brokerforce-six.vercel.app/api/auth/bot/webhook"
+
+permissions: {}
+
+jobs:
+  set:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Set webhook
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          WEBHOOK_URL: ${{ inputs.url }}
+        run: |
+          if [ -z "$TELEGRAM_BOT_TOKEN" ]; then
+            echo "::error::Missing repository secret TELEGRAM_BOT_TOKEN"
+            exit 1
+          fi
+          secret=$(printf 'bf-webhook' | openssl dgst -sha256 -hmac "$TELEGRAM_BOT_TOKEN" | awk '{print $2}')
+          echo "::add-mask::$secret"
+          body=$(curl -sS --max-time 20 "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/setWebhook" \
+            --data-urlencode "url=${WEBHOOK_URL}" \
+            --data-urlencode "secret_token=${secret}" \
+            --data-urlencode 'allowed_updates=["message"]' \
+            --data-urlencode "drop_pending_updates=true")
+          if [ "$(echo "$body" | jq -r '.ok')" != "true" ]; then
+            echo "::error::setWebhook refused: $(echo "$body" | jq -r '.description // "no description"')"
+            exit 1
+          fi
+          echo "Webhook set to ${WEBHOOK_URL}"
+
+      - name: Show webhook status
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        run: |
+          curl -sS --max-time 20 "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getWebhookInfo" \
+            | jq '.result | {url, pending_update_count, last_error_date, last_error_message, allowed_updates}'

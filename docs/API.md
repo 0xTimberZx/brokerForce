@@ -74,8 +74,10 @@ Retrieve a previously run, persisted simulation (`backtest_results` row). Used b
 | Route | Behaviour |
 |---|---|
 | `GET /auth/config` | `{botUsername, devBypass}` for the login page's Telegram widget. |
-| `POST /auth/telegram` | Body: the Login Widget's fields as returned. Verifies the hash (keyed with SHA256 of the bot token), that `auth_date` is under an hour old, and group membership via `getChatMember`. Sets `bf_session` (HttpOnly, Secure, SameSite=Lax, 7 days by default) and returns `{name}`; or 401 `{reason: "invalid"}`, 403 `{reason: "not_member"}`, 503 `{reason: "telegram_unavailable"}`. |
+| `POST /auth/telegram` | The backup sign-in. Body: the Login Widget's fields as returned. Verifies the hash (keyed with SHA256 of the bot token), that `auth_date` is under an hour old, and group membership via `getChatMember`. Sets `bf_session` (HttpOnly, Secure, SameSite=Lax, 7 days by default) and returns `{name}`; or 401 `{reason: "invalid"}`, 403 `{reason: "not_member"}`, 503 `{reason: "telegram_unavailable"}`. |
 | `GET /auth/me` | `{name}`, or 401 `{reason: "signed_out" \| "not_member"}`. |
 | `POST /auth/logout` | Clears the cookie; 204. |
+| `POST /auth/bot/webhook` | Telegram's webhook for the bot. Requires `X-Telegram-Bot-Api-Secret-Token` (HMAC-SHA256 of `bf-webhook` keyed with the bot token). A private `/start [param]` from a group member gets a reply with a sign-in link; a non-member is told to ask for an invite. Always 200, so Telegram doesn't retry. |
+| `GET /auth/bot/link?t=` | The link the bot sends: signed, valid 5 minutes, carries `next` from the `/start` param. Re-checks membership, sets `bf_session` and redirects to `next`; otherwise redirects to `/login?error=link_expired\|not_member\|telegram_unavailable`. |
 
 Membership is re-confirmed with Telegram once the last check is over an hour old, so someone who leaves the group loses access within the hour. If Telegram can't be reached, a session confirmed within the last 24 hours keeps working.

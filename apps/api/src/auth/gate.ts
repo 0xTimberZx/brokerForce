@@ -18,6 +18,15 @@ import {
   sessionCookieHeader,
   type SessionPayload,
 } from "./session.js";
+import {
+  decodeLink,
+  encodeLink,
+  isWebhookSecret,
+  LINK_TTL_SECONDS,
+  nextFromStartParam,
+  parseStart,
+  sendMessage,
+} from "./botLink.js";
 
 export interface GateConfig {
   botToken: string;
@@ -89,6 +98,22 @@ type SessionCheck =
   | { ok: false; status: 401 | 503; reason: "signed_out" | "not_member" | "telegram_unavailable" };
 
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
+
+interface TelegramMessage {
+  text?: string;
+  chat?: { id: number; type: string };
+  from?: { id: number; is_bot?: boolean; first_name?: string; last_name?: string; username?: string };
+}
+
+/** The site's own origin, for links the bot sends and for redirects. On
+ * Vercel the Host header is the public domain; TERMINAL_URL overrides it. */
+function publicOrigin(req: Request): string {
+  const configured = process.env.TERMINAL_URL?.replace(/\/+$/, "");
+  if (configured) return configured;
+  const host = req.get("x-forwarded-host") ?? req.get("host") ?? "localhost";
+  const local = LOCAL_HOSTS.has(host.split(":")[0]!);
+  return `${local ? "http" : "https"}://${host}`;
+}
 
 export function createGate(mode: AuthMode, deps: GateDeps = {}): { authRouter: Router; requireMember: express.RequestHandler } {
   const fetchImpl = deps.fetch ?? fetch;
@@ -165,6 +190,85 @@ export function createGate(mode: AuthMode, deps: GateDeps = {}): { authRouter: R
 
   authRouter.get("/config", (_req, res) => {
     res.json({ botUsername: cfg.botUsername, devBypass: false });
+  });
+
+  // ── Sign-in through the bot ────────────────────────────────────────────
+  // /login links to t.me/<bot>?start=<param>. Telegram delivers the /start
+  // here; the bot checks membership and replies with a 5-minute signed link
+  // to GET /auth/bot/link, which sets the session cookie. This avoids
+  // Telegram's own login page, whose phone confirmation doesn't always arrive.
+  authRouter.post("/bot/webhook", async (req, res) => {
+    if (!isWebhookSecret(req.get("x-telegram-bot-api-secret-token"), cfg.botToken)) {
+      return res.status(401).end();
+    }
+    const message = (req.body as { message?: TelegramMessage } | undefined)?.message;
+    // Telegram only needs a 200; anything we don't handle is acknowledged and dropped.
+    if (!message?.from || message.chat?.type !== "private" || message.from.is_bot) return res.status(200).end();
+    const chatId = message.chat.id;
+    const start = parseStart(message.text);
+    try {
+      if (!start) {
+        await sendMessage(cfg.botToken, chatId, "Send /start to get a sign-in link for the BrokerForce terminal.", undefined, fetchImpl);
+        return res.status(200).end();
+      }
+      const tgId = message.from.id;
+      let allowed: boolean;
+      try {
+        memberCache.delete(tgId);
+        allowed = await checkMember(tgId);
+      } catch (err) {
+        if (!(err instanceof TelegramUnavailableError)) throw err;
+        console.error(`Membership check for bot sign-in failed for ${tgId}:`, err.message);
+        await sendMessage(cfg.botToken, chatId, "Couldn't confirm group membership just now. Try /start again in a minute.", undefined, fetchImpl);
+        return res.status(200).end();
+      }
+      if (!allowed) {
+        await sendMessage(
+          cfg.botToken,
+          chatId,
+          "This Telegram account isn't in the BrokerForce group, and the terminal is for group members only. Ask an admin for an invite, then send /start again.",
+          undefined,
+          fetchImpl
+        );
+        return res.status(200).end();
+      }
+      const name = [message.from.first_name, message.from.last_name].filter(Boolean).join(" ") || message.from.username || "Member";
+      const token = encodeLink(
+        { tgId, name, next: nextFromStartParam(start.param), exp: now() + LINK_TTL_SECONDS },
+        cfg.sessionSecret
+      );
+      const url = `${publicOrigin(req)}${req.baseUrl}/bot/link?t=${encodeURIComponent(token)}`;
+      await sendMessage(
+        cfg.botToken,
+        chatId,
+        "Tap below to sign in to the BrokerForce terminal. The link works for 5 minutes.\n\nIt opens in Telegram's browser; use \"Open in browser\" from the menu to sign in there instead.",
+        { text: "Sign in to BrokerForce", url },
+        fetchImpl
+      );
+    } catch (err) {
+      // Still a 200: a non-2xx makes Telegram retry the same update for hours.
+      console.error("Bot sign-in reply failed:", (err as Error).message);
+    }
+    res.status(200).end();
+  });
+
+  authRouter.get("/bot/link", async (req, res) => {
+    const origin = publicOrigin(req);
+    const fail = (error: string) => res.redirect(302, `${origin}/login?error=${error}`);
+    const link = decodeLink(typeof req.query.t === "string" ? req.query.t : undefined, cfg.sessionSecret, now());
+    if (!link) return fail("link_expired");
+    let allowed: boolean;
+    try {
+      allowed = await checkMember(link.tgId);
+    } catch (err) {
+      if (!(err instanceof TelegramUnavailableError)) throw err;
+      console.error(`Membership check at link sign-in failed for ${link.tgId}:`, err.message);
+      return fail("telegram_unavailable");
+    }
+    if (!allowed) return fail("not_member");
+    const t = now();
+    setSession(res, { tgId: link.tgId, name: link.name, iat: t, memberCheckedAt: t });
+    res.redirect(302, `${origin}${link.next}`);
   });
 
   authRouter.post("/telegram", async (req, res) => {
