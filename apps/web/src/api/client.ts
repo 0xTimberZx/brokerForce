@@ -5,7 +5,7 @@
 // failure -- conflating any two of these would mislead the person using the
 // page about what's actually true.
 
-import type { PairDetailResponse, PairHistoryResponse, CanonicalWindow, OrtScore, OrtRankedPair, PoolListResponse, PoolWithDerived, PoolHistoryPoint, SearchResponse, BacktestRequest, BacktestResult, RangeSuggestionsResponse, AssetOpportunitiesResponse, SentimentResponse, RegimeResponse } from "@brokerforce/types";
+import type { PairDetailResponse, PairHistoryResponse, CanonicalWindow, OrtScore, OrtRankedPair, OrtNetworkCount, PoolListResponse, PoolWithDerived, PoolHistoryPoint, SearchResponse, BacktestRequest, BacktestResult, RangeSuggestionsResponse, AssetOpportunitiesResponse, SentimentResponse, RegimeResponse } from "@brokerforce/types";
 // Every data call goes through apiFetch: a 401 means the member session
 // ended, and the visitor is sent to /login (spec 022, Phase 1).
 import { apiFetch } from "../auth/session";
@@ -86,10 +86,23 @@ export async function fetchOrtRanked(
   limit: number,
   // Quote-currency lens: "gold" narrows the ranking to gold-denominated pairs
   // server-side (one side is XAUT/PAXG). Omitted/"usd" is the whole universe.
-  quote: "usd" | "gold" = "usd"
+  quote: "usd" | "gold" = "usd",
+  // Only pairs with a usable pool on this network (pools.chain); null = all.
+  network: string | null = null
 ): Promise<OrtRankedPair[]> {
   const goldParam = quote === "gold" ? "&quote=gold" : "";
-  return getJson<OrtRankedPair[]>(`/pairs/ort?sort=desc&window=${window}&limit=${limit}${goldParam}`);
+  const networkParam = network ? `&network=${encodeURIComponent(network)}` : "";
+  return getJson<OrtRankedPair[]>(`/pairs/ort?sort=desc&window=${window}&limit=${limit}${goldParam}${networkParam}`);
+}
+
+/** Networks with a usable pool for at least one scored pair, with pair counts
+ * (the dashboard's network filter). Empty on failure: the filter just hides. */
+export async function fetchOrtNetworks(window: CanonicalWindow, quote: "usd" | "gold" = "usd"): Promise<OrtNetworkCount[]> {
+  try {
+    return await getJson<OrtNetworkCount[]>(`/pairs/ort/networks?window=${window}${quote === "gold" ? "&quote=gold" : ""}`);
+  } catch {
+    return [];
+  }
 }
 
 /** Market Fear & Greed, latest + trailing window per source. Null on any

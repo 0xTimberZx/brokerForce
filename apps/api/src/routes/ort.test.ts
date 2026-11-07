@@ -42,3 +42,17 @@ describe("isCommodityQuoted (shared gold-pair predicate)", () => {
     expect(isCommodityQuoted("XAUT", "PAXG")).toBe(true);
   });
 });
+
+describe("parseNetwork (dashboard network filter)", () => {
+  it("accepts stored chain names and ignores everything else", async () => {
+    const { parseNetwork } = await import("./ort.js");
+    expect(parseNetwork("base")).toBe("base");
+    expect(parseNetwork("Ethereum")).toBe("ethereum");
+    expect(parseNetwork("seiv2")).toBe("seiv2");
+    expect(parseNetwork("all")).toBeNull();
+    expect(parseNetwork("")).toBeNull();
+    expect(parseNetwork(undefined)).toBeNull();
+    expect(parseNetwork("base'; drop table pools;--")).toBeNull();
+    expect(parseNetwork("x")).toBeNull();
+  });
+});

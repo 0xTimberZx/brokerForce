@@ -1,32 +1,94 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
-import type { OrtRankedPair } from "@brokerforce/types";
-import { fetchOrtRanked } from "../api/client";
+import { Link, useSearchParams } from "react-router-dom";
+import type { CanonicalWindow, OrtNetworkCount, OrtRankedPair, QuadrantLabel, ScoreTrend } from "@brokerforce/types";
+import { fetchOrtNetworks, fetchOrtRanked } from "../api/client";
 import { QuoteLensToggle, type QuoteLens } from "./QuoteLensToggle";
-import { OrtTrendTags } from "./OrtTrendTags";
+import { fmtTrendChange } from "./OrtTrendTags";
+import { networkName, networkShort } from "./networks";
 
 type PanelState =
   | { status: "loading" }
   | { status: "error"; message: string }
   | { status: "loaded"; pairs: OrtRankedPair[] };
 
+const WINDOWS: CanonicalWindow[] = [30, 90, 200];
+/** Network badges shown per row before collapsing into "+N". */
+const MAX_BADGES = 3;
+
+// Signal as a mark, not a word: solid for prime, softer for active, hollow
+// for quiet, a cross for avoid. Kept monochrome: amber stays reserved for the
+// score, green/red for direction (tailwind.config).
+const SIGNAL_MARK: Record<QuadrantLabel, { glyph: string; cls: string }> = {
+  prime: { glyph: "●", cls: "text-ink" },
+  active: { glyph: "●", cls: "text-ink-muted" },
+  quiet: { glyph: "○", cls: "text-ink-muted" },
+  avoid: { glyph: "×", cls: "text-ink-muted" },
+};
+
+const MOMENTUM: Record<ScoreTrend, { glyph: string; cls: string }> = {
+  rising: { glyph: "↑", cls: "text-pos" },
+  falling: { glyph: "↓", cls: "text-neg" },
+  flat: { glyph: "→", cls: "text-ink-muted" },
+};
+
+const REGIME_TEXT = {
+  "toward-prime": "moving toward prime (30d vs 90d)",
+  "away-from-prime": "moving away from prime (30d vs 90d)",
+  flat: "flat (30d vs 90d)",
+} as const;
+
+function parseWindow(raw: string | null): CanonicalWindow {
+  const n = Number(raw);
+  return n === 30 || n === 200 ? n : 90;
+}
+
+/** Everything the row no longer spells out, for the hover/long-press title. */
+function rowDetail(p: OrtRankedPair): string {
+  const lines = [
+    `Signal: ${p.quadrantLabel ?? "n/a"}`,
+    `Regime: ${p.trendDirection ? REGIME_TEXT[p.trendDirection] : "n/a"}`,
+    `Momentum: ${
+      p.scoreTrend
+        ? `${p.scoreTrend}${p.scoreTrendChange !== null ? ` (${fmtTrendChange(p.scoreTrendChange)} over 14d)` : ""}`
+        : "building (not enough history yet)"
+    }`,
+  ];
+  if (p.networks.length) lines.push(`Networks: ${p.networks.map(networkName).join(", ")}`);
+  if (p.thinLiquidity) lines.push("Thin liquidity: deepest pool is below a usable size");
+  if (p.confidence === "low") lines.push("Low confidence: limited data behind this score");
+  return lines.join("\n");
+}
+
 /**
- * spec1.md's Top Opportunities: top pairs by canonical 90d ORT score,
- * pulled from 004's ranked endpoint. An EMPTY list is the normal state
- * until the daily pipeline has accumulated 7 days of tier-gate evidence
- * and the first pairs are promoted -- rendered as an honest explanation,
- * not a blank panel, per the acceptance criterion that sparse data be
- * clearly labeled rather than implying full coverage.
+ * spec1.md's Top Opportunities: the top 10 pairs by ORT score from 004's
+ * ranked endpoint. Window (30/90/200d), quote lens and network live in the
+ * URL (?w=, ?q=gold, ?net=) so a view can be shared or bookmarked. Rows show
+ * only rank, signal mark, pair, networks, momentum arrow and score; the rest
+ * is in each row's title and on the pair's own page.
  */
 export function TopOpportunitiesPanel() {
+  const [params, setParams] = useSearchParams();
+  const win = parseWindow(params.get("w"));
+  const lens: QuoteLens = params.get("q") === "gold" ? "gold" : "usd";
+  const network = params.get("net") || null;
+
   const [state, setState] = useState<PanelState>({ status: "loading" });
-  // Quote-currency lens: USD (whole universe) or Gold (crypto-vs-gold pairs).
-  const [lens, setLens] = useState<QuoteLens>("usd");
+  const [networks, setNetworks] = useState<OrtNetworkCount[]>([]);
+
+  function update(next: { w?: CanonicalWindow; q?: QuoteLens; net?: string | null }) {
+    const p = new URLSearchParams(params);
+    const set = (key: string, value: string | null, fallback: string) =>
+      value === null || value === fallback ? p.delete(key) : p.set(key, value);
+    if (next.w !== undefined) set("w", String(next.w), "90");
+    if (next.q !== undefined) set("q", next.q, "usd");
+    if (next.net !== undefined) set("net", next.net, "");
+    setParams(p, { replace: true });
+  }
 
   useEffect(() => {
     let active = true;
     setState({ status: "loading" });
-    fetchOrtRanked(90, 10, lens)
+    fetchOrtRanked(win, 10, lens, network)
       .then((pairs) => active && setState({ status: "loaded", pairs }))
       .catch((err) =>
         active && setState({ status: "error", message: err instanceof Error ? err.message : "Unknown error" })
@@ -34,108 +96,128 @@ export function TopOpportunitiesPanel() {
     return () => {
       active = false;
     };
-  }, [lens]);
+  }, [win, lens, network]);
+
+  useEffect(() => {
+    let active = true;
+    fetchOrtNetworks(win, lens).then((n) => active && setNetworks(n));
+    return () => {
+      active = false;
+    };
+  }, [win, lens]);
 
   return (
     <section className="border border-line bg-bg-panel p-5">
-      <div className="flex items-baseline justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="font-display text-sm text-ink">Top opportunities</h2>
-        <div className="flex items-center gap-3">
-          <QuoteLensToggle value={lens} onChange={setLens} />
-          <span className="font-mono text-[10px] uppercase tracking-widest text-ink-muted">90d ORT</span>
+        <div className="flex items-center gap-2">
+          <div role="group" aria-label="ORT window" className="inline-flex border border-line divide-x divide-line">
+            {WINDOWS.map((w) => (
+              <button
+                key={w}
+                type="button"
+                aria-pressed={w === win}
+                onClick={() => update({ w })}
+                className={
+                  "px-2.5 py-1 font-mono text-[11px] uppercase tracking-wide transition-colors " +
+                  (w === win ? "bg-ink text-bg-deep" : "text-ink-muted hover:text-ink")
+                }
+              >
+                {w}d
+              </button>
+            ))}
+          </div>
+          <QuoteLensToggle value={lens} onChange={(q) => update({ q })} />
         </div>
       </div>
 
-      {state.status === "loading" && (
-        <p className="font-body text-sm text-ink-muted mt-4">Loading rankings…</p>
+      {networks.length > 0 && (
+        <label className="mt-3 flex items-center gap-2 font-mono text-[11px] text-ink-muted">
+          <span className="uppercase tracking-widest text-[10px]">Network</span>
+          <select
+            value={network ?? ""}
+            onChange={(e) => update({ net: e.target.value || null })}
+            className="bg-bg-deep border border-line text-ink px-2 py-1 font-mono text-[11px]"
+          >
+            <option value="">All networks</option>
+            {networks.map((n) => (
+              <option key={n.network} value={n.network}>
+                {networkName(n.network)} ({n.pairs})
+              </option>
+            ))}
+          </select>
+        </label>
       )}
+
+      {state.status === "loading" && <p className="font-body text-sm text-ink-muted mt-4">Loading rankings…</p>}
 
       {state.status === "error" && (
         <p className="font-mono text-xs text-ink-muted mt-4">Rankings unavailable: {state.message}</p>
       )}
 
-      {state.status === "loaded" && state.pairs.length === 0 && lens === "gold" && (
+      {state.status === "loaded" && state.pairs.length === 0 && (
         <p className="font-body text-sm text-ink-muted mt-4 max-w-prose">
-          No gold-denominated pairs hold an ORT score yet. Gold pairs (crypto priced in XAUT or PAXG) score
-          the same way any pair does — once one clears the active-tier gate from the daily snapshots the
-          ingestion pipeline is accumulating now. Switch to USD to see the full ranking.
-        </p>
-      )}
-
-      {state.status === "loaded" && state.pairs.length === 0 && lens === "usd" && (
-        <p className="font-body text-sm text-ink-muted mt-4 max-w-prose">
-          No pairs hold an ORT score yet. Scores appear once a pair clears the active-tier gate — a real
-          pool holding $50k TVL with a 7-day average volume over $10k, measured from daily snapshots the
-          ingestion pipeline is accumulating now.
+          {network
+            ? `No scored pairs have a usable pool on ${networkName(network)} for this view. Try another network or All networks.`
+            : lens === "gold"
+              ? "No gold-denominated pairs hold an ORT score for this window yet. Switch to USD to see the full ranking."
+              : "No pairs hold an ORT score for this window yet. Scores appear once a pair clears the active-tier gate ($50k pool TVL, $10k 7-day average volume)."}
         </p>
       )}
 
       {state.status === "loaded" && state.pairs.length > 0 && (
         <>
-          {/* Column headers -- labelled so a first-time visitor can read the
-              list without guessing what each figure means. Same flex columns
-              as the rows below so labels sit over their values. */}
-          <div className="mt-4 flex items-center gap-4 pb-2 border-b border-line font-mono text-[10px] uppercase tracking-wide text-ink-muted">
-            <span className="w-5 text-right">#</span>
-            <span>Pair</span>
-            <span className="ml-auto flex items-center gap-3">
-              <span>Signal</span>
-              <span className="text-signal">ORT</span>
-            </span>
-          </div>
-          <ol className="divide-y divide-line">
-            {state.pairs.map((p, i) => (
-              <li key={p.pairId}>
-                <Link
-                  to={`/pairs/${p.assetA}/${p.assetB}`}
-                  className="flex items-center gap-4 py-2.5 group"
-                >
-                  <span className="font-mono text-xs text-ink-muted w-5 text-right tabular-nums">{i + 1}</span>
-                  <span className="font-body text-sm text-ink group-hover:underline underline-offset-4">
-                    {p.assetA}/{p.assetB}
-                  </span>
-                  <span className="ml-auto flex items-center gap-3 font-mono text-sm">
-                    {/* Thin-liquidity flag (spec 014): the score is asset-level,
-                        so a "prime" pair can still have no actionable pool. */}
-                    {p.thinLiquidity && (
-                      <span
-                        className="text-[10px] uppercase tracking-wide text-neg border border-neg/40 px-1.5 py-0.5"
-                        title="Deepest on-chain pool is below a usable size — the score reflects the price relationship, not pool depth"
-                      >
-                        thin liq
+          <ol className="mt-3 divide-y divide-line">
+            {state.pairs.map((p, i) => {
+              const mark = p.quadrantLabel ? SIGNAL_MARK[p.quadrantLabel] : null;
+              const momentum = p.scoreTrend ? MOMENTUM[p.scoreTrend] : null;
+              const extra = p.networks.length - MAX_BADGES;
+              return (
+                <li key={p.pairId}>
+                  <Link
+                    to={`/pairs/${p.assetA}/${p.assetB}`}
+                    title={rowDetail(p)}
+                    className="flex items-center gap-3 py-2.5 group"
+                  >
+                    <span className="font-mono text-xs text-ink-muted w-5 text-right tabular-nums">{i + 1}</span>
+                    <span className={`w-3 text-center text-[13px] leading-none ${mark?.cls ?? "text-ink-muted"}`} aria-hidden>
+                      {mark?.glyph ?? "·"}
+                    </span>
+                    <span className="font-body text-sm text-ink group-hover:underline underline-offset-4">
+                      {p.assetA}/{p.assetB}
+                    </span>
+                    <span className="flex items-center gap-1 ml-1 min-w-0 overflow-hidden">
+                      {p.networks.slice(0, MAX_BADGES).map((n) => (
+                        <span
+                          key={n}
+                          className="font-mono text-[9px] tracking-wide text-ink-muted border border-line px-1 py-px"
+                        >
+                          {networkShort(n)}
+                        </span>
+                      ))}
+                      {extra > 0 && <span className="font-mono text-[9px] text-ink-muted">+{extra}</span>}
+                    </span>
+                    <span className="ml-auto flex items-center gap-3 font-mono text-sm">
+                      {p.thinLiquidity && (
+                        <span className="text-[10px] uppercase tracking-wide text-neg" aria-label="thin liquidity">
+                          thin
+                        </span>
+                      )}
+                      <span className={`w-3 text-center ${momentum?.cls ?? "text-ink-muted"}`} aria-hidden>
+                        {momentum?.glyph ?? "·"}
                       </span>
-                    )}
-                    {p.quadrantLabel && (
-                      <span className="text-[10px] uppercase tracking-wide text-ink-muted">{p.quadrantLabel}</span>
-                    )}
-                    {/* Spec 020: Regime (quadrant trend) + Momentum (score trend),
-                        kept up front together, labelled distinctly. */}
-                    <OrtTrendTags
-                      trendDirection={p.trendDirection}
-                      scoreTrend={p.scoreTrend}
-                      scoreTrendChange={p.scoreTrendChange}
-                    />
-                    {p.confidence === "low" && (
-                      <span className="text-[10px] italic text-ink-muted">low conf.</span>
-                    )}
-                    <span className="text-signal font-medium tabular-nums">{p.score.toFixed(0)}</span>
-                  </span>
-                </Link>
-              </li>
-            ))}
+                      <span className="text-signal font-medium tabular-nums w-6 text-right">{p.score.toFixed(0)}</span>
+                    </span>
+                  </Link>
+                </li>
+              );
+            })}
           </ol>
-          {/* Plain-language key -- what the two figures mean, for newcomers. */}
-          <p className="mt-4 pt-3 border-t border-line font-body text-[11px] leading-relaxed text-ink-muted">
-            <span className="text-ink">ORT</span> — a 0–100 score of how attractive a pair is for providing
-            liquidity (higher is better). <span className="text-ink">Signal</span> — a plain read: prime
-            (best) · active · quiet · avoid. <span className="text-ink">Regime</span> (↗ ↘ →) — whether the
-            pair's near-term (30d) position sits closer to or further from prime than its longer-term (90d)
-            one. <span className="text-ink">Momentum</span> (↑ ↓ →, with the 14-day change) — whether the
-            score itself has been rising or falling lately — driven by the pair's own metrics, broad market
-            moves, and partly by how it ranks against the rest of the board; "building" means there isn't
-            enough history yet.{" "}
-            <span className="text-neg">thin liq</span> — the score reflects the price relationship, but the
-            pair's deepest on-chain pool is too small to meaningfully provide into.
+          <p className="mt-3 pt-3 border-t border-line font-mono text-[10px] text-ink-muted">
+            <span className="text-ink">●</span> prime ● active ○ quiet × avoid ·{" "}
+            <span className="text-pos">↑</span>
+            <span className="text-neg">↓</span> 14-day score trend · <span className="text-signal">score</span> 0–100 ·
+            full detail on hover or on the pair's page
           </p>
         </>
       )}

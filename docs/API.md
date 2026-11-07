@@ -24,6 +24,12 @@ Grouped results — assets, direct pair matches, pools where applicable. Include
 
 ## 5. ORT
 
+`GET /pairs/ort?sort=desc&window=30|90|200&limit=&quote=gold&network=`
+Ranked pairs by ORT score. Each row carries `networks`: the chains where the pair has a pool of at least $50k TVL, deepest first. `network` (a `pools.chain` value such as `base`) keeps only pairs with such a pool on that chain. Used by `001 Dashboard`'s Top Opportunities.
+
+`GET /pairs/ort/networks?window=&quote=gold`
+The networks that have a usable pool for at least one scored pair, as `[{network, pairs}]`, most pairs first. Feeds the dashboard's network filter.
+
 `GET /pairs/:pairId/ort?window=30|90|200`
 Current ORT score, component breakdown, quadrant label, and trend direction for a pair, for one canonical window. Defaults to 90d. Used by `004 ORT Engine`, and the `ORTPreviewChip`/`ORTContextChip` components in `003`/`006`.
 
