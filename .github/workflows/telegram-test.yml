@@ -1,0 +1,52 @@
+name: Telegram test message
+
+# Manual check that the bot can post to the group (spec 022, ahead of the
+# Phase 3 alert). Uses the same TELEGRAM_BOT_TOKEN and TELEGRAM_GROUP_ID
+# secrets the alert step will. The token never appears in the log: it's
+# only in the request URL curl builds, and GitHub masks secrets anyway.
+
+on:
+  workflow_dispatch:
+    inputs:
+      message:
+        description: Text to post to the group
+        required: false
+        default: "BrokerForce test: the bot can post to this group."
+
+permissions: {}
+
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Require Telegram secrets
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_GROUP_ID: ${{ secrets.TELEGRAM_GROUP_ID }}
+        run: |
+          missing=""
+          [ -n "$TELEGRAM_BOT_TOKEN" ] || missing="$missing TELEGRAM_BOT_TOKEN"
+          [ -n "$TELEGRAM_GROUP_ID" ] || missing="$missing TELEGRAM_GROUP_ID"
+          if [ -n "$missing" ]; then
+            echo "::error::Missing repository secret(s):$missing"
+            exit 1
+          fi
+
+      - name: Send message
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_GROUP_ID: ${{ secrets.TELEGRAM_GROUP_ID }}
+          MESSAGE: ${{ inputs.message }}
+        run: |
+          body=$(curl -sS --max-time 20 \
+            "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            --data-urlencode "chat_id=${TELEGRAM_GROUP_ID}" \
+            --data-urlencode "text=${MESSAGE}")
+          ok=$(echo "$body" | jq -r '.ok')
+          if [ "$ok" = "true" ]; then
+            echo "Sent to chat $(echo "$body" | jq -r '.result.chat.title // .result.chat.id') (message $(echo "$body" | jq -r '.result.message_id'))."
+          else
+            echo "::error::Telegram refused the message: $(echo "$body" | jq -r '.error_code // "?"') $(echo "$body" | jq -r '.description // "no description"')"
+            exit 1
+          fi
