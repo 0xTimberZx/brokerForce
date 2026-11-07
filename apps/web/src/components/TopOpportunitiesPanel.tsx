@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import type { CanonicalWindow, OrtNetworkCount, OrtRankedPair, QuadrantLabel, ScoreTrend } from "@brokerforce/types";
+import type { CanonicalWindow, OrtNetworkCount, OrtRankedPair } from "@brokerforce/types";
 import { fetchOrtNetworks, fetchOrtRanked } from "../api/client";
 import { QuoteLensToggle, type QuoteLens } from "./QuoteLensToggle";
-import { fmtTrendChange } from "./OrtTrendTags";
+import { MOMENTUM, SIGNAL_MARK, ortDetail } from "./ortMarks";
 import { networkName, networkShort } from "./networks";
 
 type PanelState =
@@ -15,48 +15,9 @@ const WINDOWS: CanonicalWindow[] = [30, 90, 200];
 /** Network badges shown per row before collapsing into "+N". */
 const MAX_BADGES = 3;
 
-// Signal as a mark, not a word: solid for prime, softer for active, hollow
-// for quiet, a cross for avoid. Kept monochrome: amber stays reserved for the
-// score, green/red for direction (tailwind.config).
-const SIGNAL_MARK: Record<QuadrantLabel, { glyph: string; cls: string }> = {
-  prime: { glyph: "●", cls: "text-ink" },
-  active: { glyph: "●", cls: "text-ink-muted" },
-  quiet: { glyph: "○", cls: "text-ink-muted" },
-  avoid: { glyph: "×", cls: "text-ink-muted" },
-};
-
-const MOMENTUM: Record<ScoreTrend, { glyph: string; cls: string }> = {
-  rising: { glyph: "↑", cls: "text-pos" },
-  falling: { glyph: "↓", cls: "text-neg" },
-  flat: { glyph: "→", cls: "text-ink-muted" },
-};
-
-const REGIME_TEXT = {
-  "toward-prime": "moving toward prime (30d vs 90d)",
-  "away-from-prime": "moving away from prime (30d vs 90d)",
-  flat: "flat (30d vs 90d)",
-} as const;
-
 function parseWindow(raw: string | null): CanonicalWindow {
   const n = Number(raw);
   return n === 30 || n === 200 ? n : 90;
-}
-
-/** Everything the row no longer spells out, for the hover/long-press title. */
-function rowDetail(p: OrtRankedPair): string {
-  const lines = [
-    `Signal: ${p.quadrantLabel ?? "n/a"}`,
-    `Regime: ${p.trendDirection ? REGIME_TEXT[p.trendDirection] : "n/a"}`,
-    `Momentum: ${
-      p.scoreTrend
-        ? `${p.scoreTrend}${p.scoreTrendChange !== null ? ` (${fmtTrendChange(p.scoreTrendChange)} over 14d)` : ""}`
-        : "building (not enough history yet)"
-    }`,
-  ];
-  if (p.networks.length) lines.push(`Networks: ${p.networks.map(networkName).join(", ")}`);
-  if (p.thinLiquidity) lines.push("Thin liquidity: deepest pool is below a usable size");
-  if (p.confidence === "low") lines.push("Low confidence: limited data behind this score");
-  return lines.join("\n");
 }
 
 /**
@@ -176,7 +137,7 @@ export function TopOpportunitiesPanel() {
                 <li key={p.pairId}>
                   <Link
                     to={`/pairs/${p.assetA}/${p.assetB}`}
-                    title={rowDetail(p)}
+                    title={ortDetail(p)}
                     className="flex items-center gap-3 py-2.5 group"
                   >
                     <span className="font-mono text-xs text-ink-muted w-5 text-right tabular-nums">{i + 1}</span>

@@ -2,10 +2,14 @@ import { useEffect, useState } from "react";
 import type { CanonicalWindow, OrtScore } from "@brokerforce/types";
 import { fetchOrtScoreSafe } from "../api/client";
 import { OrtTrendTags } from "./OrtTrendTags";
+import { MOMENTUM, SIGNAL_MARK, ortDetail } from "./ortMarks";
 
 interface ORTPreviewChipProps {
   pairId: string;
   window: CanonicalWindow;
+  /** Mark, arrow and score only, with the rest in the title. For lists such
+   * as Recently viewed; the pair page keeps the full chip. */
+  compact?: boolean;
 }
 
 /**
@@ -17,7 +21,7 @@ interface ORTPreviewChipProps {
  * cleared the activity bar yet" -- a real, expected, and probably common
  * state for a while, not an error.
  */
-export function ORTPreviewChip({ pairId, window }: ORTPreviewChipProps) {
+export function ORTPreviewChip({ pairId, window, compact = false }: ORTPreviewChipProps) {
   const [ort, setOrt] = useState<OrtScore | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -28,6 +32,17 @@ export function ORTPreviewChip({ pairId, window }: ORTPreviewChipProps) {
       setLoading(false);
     });
   }, [pairId, window]);
+
+  if (compact && (loading || !ort)) {
+    return (
+      <span
+        className="font-mono text-xs text-ink-muted"
+        title={loading ? undefined : "No ORT score yet: this pair hasn't reached the active tier"}
+      >
+        {loading ? "—" : "pending"}
+      </span>
+    );
+  }
 
   if (loading) {
     return (
@@ -45,6 +60,22 @@ export function ORTPreviewChip({ pairId, window }: ORTPreviewChipProps) {
       >
         <span className="w-1.5 h-1.5 rounded-full bg-ink-muted" />
         ORT pending
+      </div>
+    );
+  }
+
+  if (compact) {
+    const mark = ort.quadrantLabel ? SIGNAL_MARK[ort.quadrantLabel] : null;
+    const momentum = ort.scoreTrend ? MOMENTUM[ort.scoreTrend] : null;
+    return (
+      <div className="flex items-center gap-3 font-mono text-sm" title={ortDetail(ort)}>
+        <span className={`text-[13px] leading-none ${mark?.cls ?? "text-ink-muted"}`} aria-label={ort.quadrantLabel ?? undefined}>
+          {mark?.glyph ?? "·"}
+        </span>
+        <span className={momentum?.cls ?? "text-ink-muted"} aria-hidden>
+          {momentum?.glyph ?? "·"}
+        </span>
+        <span className="text-signal font-medium tabular-nums w-6 text-right">{ort.score.toFixed(0)}</span>
       </div>
     );
   }
