@@ -2,7 +2,7 @@
   "name": "brokerforce",
   "private": true,
   "version": "0.0.0",
-  "description": "BrokerForce — a protocol-agnostic Liquidity Intelligence Platform. See docs/Vision.md.",
+  "description": "BrokerForce \u2014 a protocol-agnostic Liquidity Intelligence Platform. See docs/Vision.md.",
   "license": "AGPL-3.0-or-later",
   "workspaces": [
     "apps/*",
@@ -24,11 +24,13 @@
     "build": "npm run build --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "test": "npm run test --workspaces --if-present"
+    "test": "npm run test --workspaces --if-present",
+    "build:vercel": "node scripts/build-vercel.mjs"
   },
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "^8.0.0",
     "@typescript-eslint/parser": "^8.0.0",
+    "esbuild": "0.28.1",
     "eslint": "^9.0.0",
     "eslint-config-prettier": "^9.1.0",
     "prettier": "^3.3.0",
