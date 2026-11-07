@@ -58,6 +58,11 @@ export const NATIVE_ASSET_FORMS: Record<string, string[]> = {
   AVAX: [
     "0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7", // WAVAX -- Wrapped AVAX (Avalanche C-Chain)
   ],
+  // DOGE is native with no DEX of its own; its DEX liquidity is the
+  // Binance-Peg DOGE BEP-20 (ticker "DOGE", so symbol matching already works).
+  DOGE: [
+    "0xba2ae424d960c26247dd6c32edc70b295c744c43", // Binance-Peg Dogecoin (BNB Chain)
+  ],
 };
 
 export interface PoolAddresses {

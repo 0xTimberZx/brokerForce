@@ -1,7 +1,7 @@
-// The 36 tracked assets, per docs/Glossary.md's Asset Class Tiers plus the
+// The 37 tracked assets, per docs/Glossary.md's Asset Class Tiers plus the
 // gold quote-asset feature.
 // (Glossary/Database.md say "~17" as a rough approximation -- the actual
-// count is 36: 5 blue-chip + 5 stable + 19 growth-exotic + 5 degen + 2
+// count is 37: 5 blue-chip + 5 stable + 19 growth-exotic + 6 degen + 2
 // commodity. The two tokenized-gold assets, XAUT/PAXG, were added so crypto
 // can be denominated in gold, not just USD.)
 //
@@ -141,6 +141,11 @@ export const TRACKED_ASSETS: TrackedAsset[] = [
   { symbol: "WIF", class: "degen", coingeckoId: "dogwifcoin", verifyId: true },
   { symbol: "FLOKI", class: "degen", coingeckoId: "floki" },
   { symbol: "MEME", class: "degen", coingeckoId: "memecoin", verifyId: true },
+  // DOGE (added 2026-11-07): native coin, no DEX of its own. Its DEX
+  // liquidity is the Binance-Peg DOGE BEP-20 on BNB Chain, seeded as a
+  // native form in token-identity.ts so those pools verify as DOGE.
+  // verifyId: the runtime symbol check confirms the id before any data is kept.
+  { symbol: "DOGE", class: "degen", coingeckoId: "dogecoin", verifyId: true },
 
   // Commodity -- tokenized gold, tracked as quote/denominator assets so
   // crypto can be priced in gold (BTC/XAUT, ETH/PAXG, ...). Both are ERC-20s
