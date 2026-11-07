@@ -131,3 +131,25 @@ describe("wrapped native forms for BNB and CRO", () => {
     for (const a of [WBNB, WCRO, WAVAX]) expect(a).toMatch(/^0x[0-9a-f]{40}$/);
   });
 });
+
+describe("Binance-Peg stables on BNB Chain", () => {
+  const WBNB = NATIVE_ASSET_FORMS.BNB![0]!;
+  const BSC_USDT = NATIVE_ASSET_FORMS.USDT![0]!;
+  const ETH_USDT = "0xdac17f958d2ee523a2206206994597c13d831ec7";
+
+  it("verifies WBNB/BSC-USD once both forms are seeded", () => {
+    const reg: ContractRegistry = new Map([
+      ["BNB", new Set(["0xb8c77482e45f1f44de1745f52c74426c631bdd52", WBNB])],
+      ["USDT", new Set([ETH_USDT, BSC_USDT])],
+    ]);
+    expect(verifyPoolIdentity({ baseTokenAddress: BSC_USDT, quoteTokenAddress: WBNB }, "BNB", "USDT", reg)).toBe("verified");
+  });
+
+  it("rejects it when USDT's list lacks the BNB Chain token (the remaining bug)", () => {
+    const reg: ContractRegistry = new Map([
+      ["BNB", new Set([WBNB])],
+      ["USDT", new Set([ETH_USDT])],
+    ]);
+    expect(verifyPoolIdentity({ baseTokenAddress: BSC_USDT, quoteTokenAddress: WBNB }, "BNB", "USDT", reg)).toBe("rejected");
+  });
+});
