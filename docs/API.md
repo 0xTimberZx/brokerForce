@@ -2,7 +2,7 @@
 
 ## 1. Conventions
 
-REST over HTTPS, JSON request/response bodies. No authentication currently required (per `Architecture.md` §5 — local-storage-only auth phase); this section gets revisited once wallet-based auth lands. All endpoints below were already referenced across the specs as dependencies — this document is the single place they're defined together, so they don't quietly diverge per-spec.
+REST over HTTPS, JSON request/response bodies. Every endpoint except `/health` and `/auth/*` needs a member session: the `bf_session` cookie issued by `POST /auth/telegram` to members of the BrokerForce Telegram group (spec 022; `Architecture.md` §5's access gate, not accounts). Without one, data routes answer 401 `{reason}`; if the gate's secrets aren't configured they answer 503 and stay closed. All endpoints below were already referenced across the specs as dependencies — this document is the single place they're defined together, so they don't quietly diverge per-spec.
 
 ## 2. Assets
 
@@ -68,3 +68,14 @@ Retrieve a previously run, persisted simulation (`backtest_results` row). Used b
 
 - Rate limiting and caching headers (e.g. reflecting the `computed_at` / refresh-cadence model from `Database.md` §7) aren't specified yet — responses should probably surface `computed_at` so the frontend can show data freshness, but the exact header/field convention isn't decided.
 - Error response shape (4xx/5xx body format) isn't standardized yet across the endpoints above.
+
+## Auth (spec 022)
+
+| Route | Behaviour |
+|---|---|
+| `GET /auth/config` | `{botUsername, devBypass}` for the login page's Telegram widget. |
+| `POST /auth/telegram` | Body: the Login Widget's fields as returned. Verifies the hash (keyed with SHA256 of the bot token), that `auth_date` is under an hour old, and group membership via `getChatMember`. Sets `bf_session` (HttpOnly, Secure, SameSite=Lax, 7 days by default) and returns `{name}`; or 401 `{reason: "invalid"}`, 403 `{reason: "not_member"}`, 503 `{reason: "telegram_unavailable"}`. |
+| `GET /auth/me` | `{name}`, or 401 `{reason: "signed_out" \| "not_member"}`. |
+| `POST /auth/logout` | Clears the cookie; 204. |
+
+Membership is re-confirmed with Telegram once the last check is over an hour old, so someone who leaves the group loses access within the hour. If Telegram can't be reached, a session confirmed within the last 24 hours keeps working.

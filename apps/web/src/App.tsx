@@ -12,8 +12,10 @@
 //   /pairs/:assetA/:assetB/pools -> 005 Pool Explorer (pair context comes
 //                                   from the URL, per spec5.md's "navigating
 //                                   from 003 preserves pair context")
+//   /login                       -> 022 sign-in (Telegram Login); every other
+//                                   route sits behind AuthGate
 
-import { BrowserRouter, Routes, Route, Link, Navigate, useParams, useNavigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Link, Navigate, Outlet, useParams, useNavigate } from "react-router-dom";
 import { DashboardPage } from "./pages/Dashboard";
 import { SearchPage } from "./pages/Search";
 import { WatchlistPage } from "./pages/Watchlist";
@@ -22,6 +24,9 @@ import { PoolExplorerPage } from "./pages/PoolExplorer";
 import { BacktestPage } from "./pages/Backtest";
 import { AssetDetailPage } from "./pages/AssetDetail";
 import { SiteFooter } from "./components/SiteFooter";
+import { LoginPage } from "./pages/Login";
+import { AuthGate, useMemberName } from "./auth/AuthGate";
+import { signOut } from "./auth/session";
 
 function PoolExplorerRoute() {
   const { assetA = "", assetB = "" } = useParams();
@@ -45,43 +50,82 @@ function PoolExplorerRoute() {
   );
 }
 
+function MemberMenu() {
+  const name = useMemberName();
+  return (
+    <div className="ml-auto flex items-center gap-3">
+      {name && <span className="font-body text-xs text-ink-muted">{name}</span>}
+      <button
+        type="button"
+        className="font-body text-xs text-ink-muted hover:text-ink"
+        onClick={async () => {
+          await signOut();
+          window.location.assign("/login");
+        }}
+      >
+        Sign out
+      </button>
+    </div>
+  );
+}
+
+/** The terminal's chrome around every gated page. */
+function TerminalLayout() {
+  return (
+    <AuthGate>
+      <nav className="border-b border-line">
+        <div className="max-w-5xl mx-auto px-6 md:px-10 py-3 flex items-center gap-6">
+          <Link to="/" className="font-display text-sm text-ink">
+            BrokerForce
+          </Link>
+          <Link to="/" className="font-body text-xs text-ink-muted hover:text-ink">
+            Dashboard
+          </Link>
+          <Link to="/watchlist" className="font-body text-xs text-ink-muted hover:text-ink">
+            Watchlist
+          </Link>
+          <Link to="/search" className="font-body text-xs text-ink-muted hover:text-ink">
+            Search
+          </Link>
+          <Link to="/backtest" className="font-body text-xs text-ink-muted hover:text-ink">
+            Backtester
+          </Link>
+          <MemberMenu />
+        </div>
+      </nav>
+      <main className="p-6 md:p-10 flex-1">
+        <div className="max-w-5xl mx-auto">
+          <Outlet />
+        </div>
+      </main>
+    </AuthGate>
+  );
+}
+
 export default function App() {
   return (
     <BrowserRouter>
       <div className="min-h-screen bg-bg-deep flex flex-col">
-        <nav className="border-b border-line">
-          <div className="max-w-5xl mx-auto px-6 md:px-10 py-3 flex items-center gap-6">
-            <Link to="/" className="font-display text-sm text-ink">
-              BrokerForce
-            </Link>
-            <Link to="/" className="font-body text-xs text-ink-muted hover:text-ink">
-              Dashboard
-            </Link>
-            <Link to="/watchlist" className="font-body text-xs text-ink-muted hover:text-ink">
-              Watchlist
-            </Link>
-            <Link to="/search" className="font-body text-xs text-ink-muted hover:text-ink">
-              Search
-            </Link>
-            <Link to="/backtest" className="font-body text-xs text-ink-muted hover:text-ink">
-              Backtester
-            </Link>
-          </div>
-        </nav>
-        <main className="p-6 md:p-10 flex-1">
-          <div className="max-w-5xl mx-auto">
-            <Routes>
-              <Route path="/" element={<DashboardPage />} />
-              <Route path="/search" element={<SearchPage />} />
-              <Route path="/watchlist" element={<WatchlistPage />} />
-              <Route path="/backtest" element={<BacktestPage />} />
-              <Route path="/assets/:symbol" element={<AssetDetailPage />} />
-              <Route path="/pairs/:assetA/:assetB" element={<PairAnalysisPage />} />
-              <Route path="/pairs/:assetA/:assetB/pools" element={<PoolExplorerRoute />} />
-              <Route path="*" element={<Navigate to="/" replace />} />
-            </Routes>
-          </div>
-        </main>
+        <Routes>
+          <Route
+            path="/login"
+            element={
+              <main className="p-6 md:p-10 flex-1">
+                <LoginPage />
+              </main>
+            }
+          />
+          <Route element={<TerminalLayout />}>
+            <Route path="/" element={<DashboardPage />} />
+            <Route path="/search" element={<SearchPage />} />
+            <Route path="/watchlist" element={<WatchlistPage />} />
+            <Route path="/backtest" element={<BacktestPage />} />
+            <Route path="/assets/:symbol" element={<AssetDetailPage />} />
+            <Route path="/pairs/:assetA/:assetB" element={<PairAnalysisPage />} />
+            <Route path="/pairs/:assetA/:assetB/pools" element={<PoolExplorerRoute />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Route>
+        </Routes>
         <SiteFooter />
       </div>
     </BrowserRouter>
