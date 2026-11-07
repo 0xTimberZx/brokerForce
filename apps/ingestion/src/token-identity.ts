@@ -63,6 +63,16 @@ export const NATIVE_ASSET_FORMS: Record<string, string[]> = {
   DOGE: [
     "0xba2ae424d960c26247dd6c32edc70b295c744c43", // Binance-Peg Dogecoin (BNB Chain)
   ],
+  // The stables on BNB Chain are Binance-Peg tokens that CoinGecko lists as
+  // separate coins, so they're missing from USDT's and USDC's own contract
+  // lists. Without these, every BNB Chain pool quoted in USDT/USDC was
+  // "rejected", whatever the other token was (WBNB/USDT included).
+  USDT: [
+    "0x55d398326f99059ff775485246999027b3197955", // Binance-Peg BSC-USD (BNB Chain)
+  ],
+  USDC: [
+    "0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d", // Binance-Peg USD Coin (BNB Chain)
+  ],
 };
 
 export interface PoolAddresses {
