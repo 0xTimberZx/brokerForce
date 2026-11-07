@@ -5,7 +5,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { fetchAuthConfig, fetchMe, safeNext, signInWithTelegram, type TelegramUser } from "../auth/session";
+import { fetchAuthConfig, fetchMe, loginPath, safeNext, signInWithTelegram, type TelegramUser } from "../auth/session";
 
 type Status =
   | { kind: "loading" }
@@ -16,11 +16,20 @@ type Status =
   | { kind: "unavailable" }
   | { kind: "closed" };
 
-declare global {
-  interface Window {
-    onTelegramAuth?: (user: TelegramUser) => void;
+/** The fields Telegram signs. Only these are sent on, so `next` (or anything
+ * else in the URL) never ends up in the data the hash is checked against. */
+const TELEGRAM_FIELDS = ["id", "first_name", "last_name", "username", "photo_url", "auth_date", "hash"];
+
+function telegramFieldsFrom(params: URLSearchParams): TelegramUser | null {
+  if (!params.get("hash") || !params.get("id") || !params.get("auth_date")) return null;
+  const fields: Record<string, string> = {};
+  for (const key of TELEGRAM_FIELDS) {
+    const value = params.get(key);
+    if (value !== null) fields[key] = value;
   }
+  return fields as unknown as TelegramUser;
 }
+
 
 export function LoginPage() {
   const [params] = useSearchParams();
@@ -29,10 +38,26 @@ export function LoginPage() {
   const [status, setStatus] = useState<Status>({ kind: "loading" });
   const widgetRef = useRef<HTMLDivElement>(null);
 
-  // Already signed in (or local dev bypass): go straight on.
+  // Telegram sends the visitor back here with the signed login fields in the
+  // query string (the widget's redirect mode; see below). Read them once.
+  const returned = telegramFieldsFrom(params);
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
+      if (returned) {
+        setStatus({ kind: "signing_in" });
+        // Drop the login fields from the address bar either way, so a reload
+        // or a shared URL never carries them.
+        window.history.replaceState(null, "", loginPath(next));
+        const result = await signInWithTelegram(returned);
+        if (cancelled) return;
+        if (result.ok) return navigate(next, { replace: true });
+        if (result.reason === "not_member") return setStatus({ kind: "not_member" });
+        if (result.reason === "telegram_unavailable") return setStatus({ kind: "unavailable" });
+        return setStatus({ kind: "invalid" });
+      }
+      // Already signed in (or local dev bypass): go straight on.
       const me = await fetchMe();
       if (cancelled) return;
       if (me.state === "member") return navigate(next, { replace: true });
@@ -45,35 +70,30 @@ export function LoginPage() {
     return () => {
       cancelled = true;
     };
+    // `returned` comes from the URL, which this effect rewrites; it runs once per `next`.
   }, [navigate, next]);
 
-  // The widget is a script tag that renders Telegram's button in place and
-  // calls window.onTelegramAuth with the signed login data.
+  // Redirect mode, not the widget's JavaScript callback: the callback relies
+  // on the Telegram popup talking back to this tab, which mobile browsers
+  // (Brave, in-app browsers, anything that opens the popup as a new tab)
+  // often break, so the login silently went nowhere. With data-auth-url,
+  // Telegram navigates back to /login with the signed fields instead.
   const botUsername = status.kind === "ready" ? status.botUsername : null;
   useEffect(() => {
     const host = widgetRef.current;
     if (!botUsername || !host) return;
-    window.onTelegramAuth = async (user) => {
-      setStatus({ kind: "signing_in" });
-      const result = await signInWithTelegram(user);
-      if (result.ok) return navigate(next, { replace: true });
-      if (result.reason === "not_member") return setStatus({ kind: "not_member" });
-      if (result.reason === "telegram_unavailable") return setStatus({ kind: "unavailable" });
-      setStatus({ kind: "invalid" });
-    };
     const script = document.createElement("script");
     script.src = "https://telegram.org/js/telegram-widget.js?22";
     script.async = true;
     script.setAttribute("data-telegram-login", botUsername);
     script.setAttribute("data-size", "large");
     script.setAttribute("data-request-access", "false");
-    script.setAttribute("data-onauth", "onTelegramAuth(user)");
+    script.setAttribute("data-auth-url", window.location.origin + loginPath(next));
     host.replaceChildren(script);
     return () => {
       host.replaceChildren();
-      delete window.onTelegramAuth;
     };
-  }, [botUsername, navigate, next]);
+  }, [botUsername, next]);
 
   return (
     <section className="max-w-md mx-auto mt-10 border border-line bg-bg-panel p-6">
