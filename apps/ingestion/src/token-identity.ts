@@ -53,6 +53,11 @@ export const NATIVE_ASSET_FORMS: Record<string, string[]> = {
   CRO: [
     "0x5c7f8a570d578ed84e63fdfa7b1ee72deae1ae23", // WCRO -- Wrapped CRO (Cronos)
   ],
+  // AVAX has no CoinGecko contract at all, so its pools only ever abstained
+  // ("unverifiable"). Seeding WAVAX lets them verify, the way WBTC does for BTC.
+  AVAX: [
+    "0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7", // WAVAX -- Wrapped AVAX (Avalanche C-Chain)
+  ],
 };
 
 export interface PoolAddresses {
