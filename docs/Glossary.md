@@ -58,7 +58,7 @@
 
 **Volume Field Set** — The pair-level derived volume metrics (`avg_volume_24h`, `avg_volume_7d`, `avg_volume_30d`, `volume_tvl_ratio`, `volume_trend`, `volume_stability`, `volume_share`, `fee_opportunity_score`) used as first-class Pair Engine inputs, not just display data.
 
-**Asset Class Tiers** — BrokerForce's classification of tracked assets: **Blue chip** (BTC, ETH, BNB, SOL), **Stable** (USDC, USDT, FRAX, SKY, DAI), **Growth/Exotic** (ONDO, NEAR, LINK, AAVE, AVAX, ARB), **Degen** (PEPE, BONK, WIF, FLOKI, MEME).
+**Asset Class Tiers** — BrokerForce's classification of tracked assets: **Blue chip** (BTC, ETH, BNB, SOL), **Stable** (USDC, USDT, FRAX, SKY, DAI), **Growth/Exotic** (ONDO, NEAR, LINK, AAVE, AVAX, ARB), **Degen** (PEPE, BONK, WIF, FLOKI, MEME, DOGE).
 
 **The Four Pillars** — Discover, Analyze, Optimize, Monitor — the four functions that define the product itself, independent of any specific page or feature.
 
