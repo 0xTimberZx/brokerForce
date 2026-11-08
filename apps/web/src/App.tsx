@@ -12,6 +12,7 @@
 //   /pairs/:assetA/:assetB/pools -> 005 Pool Explorer (pair context comes
 //                                   from the URL, per spec5.md's "navigating
 //                                   from 003 preserves pair context")
+//   /ranks                       -> 022 rank tracker (?w=&pair=&range=&asOf=&avg=&ext=&price=)
 //   /login                       -> 022 sign-in (Telegram Login); every other
 //                                   route sits behind AuthGate
 
@@ -25,6 +26,7 @@ import { BacktestPage } from "./pages/Backtest";
 import { AssetDetailPage } from "./pages/AssetDetail";
 import { SiteFooter } from "./components/SiteFooter";
 import { LoginPage } from "./pages/Login";
+import { RanksPage } from "./pages/Ranks";
 import { AuthGate, useMemberName } from "./auth/AuthGate";
 import { signOut } from "./auth/session";
 
@@ -90,6 +92,9 @@ function TerminalLayout() {
             <Link to="/" className="font-body text-xs text-ink-muted hover:text-ink">
               Dashboard
             </Link>
+            <Link to="/ranks" className="font-body text-xs text-ink-muted hover:text-ink">
+              Ranks
+            </Link>
             <Link to="/watchlist" className="font-body text-xs text-ink-muted hover:text-ink">
               Watchlist
             </Link>
@@ -127,6 +132,7 @@ export default function App() {
           />
           <Route element={<TerminalLayout />}>
             <Route path="/" element={<DashboardPage />} />
+            <Route path="/ranks" element={<RanksPage />} />
             <Route path="/search" element={<SearchPage />} />
             <Route path="/watchlist" element={<WatchlistPage />} />
             <Route path="/backtest" element={<BacktestPage />} />

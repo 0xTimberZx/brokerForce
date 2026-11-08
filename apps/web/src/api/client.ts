@@ -5,7 +5,7 @@
 // failure -- conflating any two of these would mislead the person using the
 // page about what's actually true.
 
-import type { PairDetailResponse, PairHistoryResponse, CanonicalWindow, OrtScore, OrtRankedPair, OrtNetworkCount, PoolListResponse, PoolWithDerived, PoolHistoryPoint, SearchResponse, BacktestRequest, BacktestResult, RangeSuggestionsResponse, AssetOpportunitiesResponse, SentimentResponse, RegimeResponse } from "@brokerforce/types";
+import type { PairDetailResponse, PairHistoryResponse, CanonicalWindow, OrtScore, OrtRankedPair, OrtNetworkCount, RanksResponse, PoolListResponse, PoolWithDerived, PoolHistoryPoint, SearchResponse, BacktestRequest, BacktestResult, RangeSuggestionsResponse, AssetOpportunitiesResponse, SentimentResponse, RegimeResponse } from "@brokerforce/types";
 // Every data call goes through apiFetch: a 401 means the member session
 // ended, and the visitor is sent to /login (spec 022, Phase 1).
 import { apiFetch } from "../auth/session";
@@ -47,6 +47,19 @@ export async function fetchPairDetail(
     if (err instanceof PairNotFoundError) throw new PairNotFoundError(assetA, assetB);
     throw err;
   }
+}
+
+/** Spec 022, Phase 2: the rank tracker as of a run date. */
+export async function fetchRanks(params: {
+  window: CanonicalWindow;
+  asOf: string | null;
+  pair: string | null;
+  range: "30" | "90" | "all";
+}): Promise<RanksResponse> {
+  const qs = new URLSearchParams({ window: String(params.window), range: params.range });
+  if (params.asOf) qs.set("asOf", params.asOf);
+  if (params.pair) qs.set("pair", params.pair);
+  return getJson<RanksResponse>(`/ranks?${qs.toString()}`);
 }
 
 export async function fetchPairHistory(

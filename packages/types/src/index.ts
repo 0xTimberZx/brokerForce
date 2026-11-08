@@ -505,3 +505,41 @@ export interface PairHistoryResponse {
   window: CanonicalWindow;
   series: PairHistoryPoint[];
 }
+
+// Spec 022, Phase 2 -- GET /ranks: the rank-tracker view as of a run date.
+export interface RanksTopRow {
+  pairId: string;
+  assetA: string;
+  assetB: string;
+  /** Rank on the asOf run, 1 = highest ORT score. */
+  rank: number;
+  score: number;
+  /** Trailing 7-day average rank, null with under 3 days of history. */
+  avg7: number | null;
+  /** 14-day fit, rank change per day (negative = climbing). */
+  trendSlope: number | null;
+  /** The pair from ?pair=, included even when outside the top 10. */
+  searched: boolean;
+}
+
+export interface RanksSeriesPair {
+  pairId: string;
+  assetA: string;
+  assetB: string;
+  ranks: { date: string; rank: number; avg7: number | null }[];
+  trend: { date: string; rank: number; phase: "fit" | "extension" }[];
+  trendSlope: number | null;
+}
+
+export interface RanksResponse {
+  window: CanonicalWindow;
+  /** The run the view shows: the last scored day on or before ?asOf. */
+  asOf: string | null;
+  /** The newest run available. */
+  latest: string | null;
+  pairsRanked: number;
+  top: RanksTopRow[];
+  series: RanksSeriesPair[];
+  /** Every pair ranked on the asOf run, for the search box. */
+  pairs: { pairId: string; assetA: string; assetB: string; rank: number }[];
+}

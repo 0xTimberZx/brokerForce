@@ -160,17 +160,17 @@ sets above and passed as query parameters.
 ranks, the averages and the trend. A banner says "Showing the Nov 6 print ·
 Jump to latest".
 
-**API** (all behind `requireMember`, all taking `window`, `pair?` and `asOf?`):
+**API** (behind `requireMember`): one route, `GET /ranks?window=&asOf=&pair=&range=`,
+returns everything the page draws in a single response: the run's top 10 plus
+a searched pair (rank, score, 7-day average, 14-day slope), their daily ranks
+with the 7-day average, the trend fit and its 7-day extension (points tagged
+`phase: fit` or `extension`), and every pair ranked that day for the search
+box. *(Built as one route instead of the four sketched earlier: the page
+always needs all of it together, and one ranking pass serves every part.)*
+`GET /pairs/:a/:b/history` (already existing) supplies the price overlay.
 
-| Route | Returns |
-|---|---|
-| `GET /ranks/top` | The top 10, plus a searched pair outside them: current rank, pairs ranked, 7-day average and trend per week, as of `asOf`. |
-| `GET /ranks/history` | Daily ranks and the 7-day average for those pairs, up to `asOf`. |
-| `GET /ranks/trend` | The 14-day fit plus the 7-day extension, rows tagged `phase: fit` or `extension`. |
-| `GET /ranks/pairs` | Every pair scored on that window, with its rank, for the search box. |
-| `GET /pairs/:a/:b/history` | Already exists; supplies the price overlay. |
-
-The SQL is the dashboard's three proven queries, with `asOf` added as a date
+The ranking comes from `ort_score_history`: each pair's last score of each
+day, ranked within the day, with `asOf` as the date
 limit, `"window"` and `pair` passed as query parameters, and one change. The
 dashboard picks "today's top 10" from `ort_scores`, which holds only the latest
 scores, so it can't answer for a past date. Here the top 10 is taken from the
