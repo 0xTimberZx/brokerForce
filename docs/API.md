@@ -30,6 +30,9 @@ Ranked pairs by ORT score. Each row carries `networks`: the chains where the pai
 `GET /pairs/ort/networks?window=&quote=gold`
 The networks that have a usable pool for at least one scored pair, as `[{network, pairs}]`, most pairs first. Feeds the dashboard's network filter.
 
+`GET /ranks?window=30|90|200&asOf=YYYY-MM-DD&pair=BASE-QUOTE&range=30|90|all`
+The rank tracker (spec 022, Phase 2) as of a run date, rebuilt from `ort_score_history`: each pair's last score per day, ranked within the day. Returns `{window, asOf, latest, pairsRanked, top, series, pairs}`. `top` is the run's top 10 plus the searched pair, with rank, score, 7-day average rank and the 14-day slope (ranks per day; negative = climbing). `series` holds their daily ranks with the 7-day average and the trend fit plus a 7-day extension. `pairs` lists every pair ranked that day. Invalid parameters fall back to the defaults (30, latest, all pairs, 90).
+
 `GET /pairs/:pairId/ort?window=30|90|200`
 Current ORT score, component breakdown, quadrant label, and trend direction for a pair, for one canonical window. Defaults to 90d. Used by `004 ORT Engine`, and the `ORTPreviewChip`/`ORTContextChip` components in `003`/`006`.
 

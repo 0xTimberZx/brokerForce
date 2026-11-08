@@ -10,6 +10,7 @@ import { poolsRouter, poolDetailRouter } from "./routes/pools.js";
 import { backtestRouter } from "./routes/backtest.js";
 import { rangeSuggestionsRouter, assetOpportunitiesRouter } from "./routes/rangeSuggestions.js";
 import { sentimentRouter } from "./routes/sentiment.js";
+import { ranksRouter } from "./routes/ranks.js";
 import { catchAsyncErrors, errorHandler } from "./http/asyncErrors.js";
 import { createGate, loadAuthMode } from "./auth/gate.js";
 
@@ -52,6 +53,7 @@ app.use("/search", catchAsyncErrors(searchRouter));
 app.use("/pools", catchAsyncErrors(poolDetailRouter)); // /pools/:poolId, /pools/:poolId/history
 app.use("/backtest", catchAsyncErrors(backtestRouter));
 app.use("/sentiment", catchAsyncErrors(sentimentRouter)); // market Fear & Greed (008-adjacent sentiment cog)
+app.use("/ranks", catchAsyncErrors(ranksRouter)); // rank tracker as of a run date (spec 022, Phase 2)
 
 // After every route: turns a failed query into a prompt 500 instead of a
 // hung request (see http/asyncErrors.ts).
