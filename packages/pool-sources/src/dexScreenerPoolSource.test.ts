@@ -178,3 +178,53 @@ describe("FallbackPoolSource", () => {
     ).rejects.toThrow(/all pool sources unavailable: stub down \| stub down/);
   });
 });
+
+describe("wrapped-symbol searches", () => {
+  beforeEach(() => vi.restoreAllMocks());
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("builds the plain query plus one per wrapped side", async () => {
+    const { searchQueriesFor } = await import("./dexScreenerPoolSource.js");
+    expect(searchQueriesFor("BNB", "USDT")).toEqual(["BNB USDT", "WBNB USDT"]);
+    expect(searchQueriesFor("ETH", "BTC")).toEqual(["ETH BTC", "WETH BTC", "ETH WBTC", "WETH WBTC"]);
+    expect(searchQueriesFor("LINK", "USDC")).toEqual(["LINK USDC"]);
+  });
+
+  it("finds a pool only the wrapped search returns, ahead of plain-search lookalikes", async () => {
+    const real = "0x16b9a82891338f9ba80e2d6970fdda79d1eb0dae";
+    const fetchMock = vi.fn(async (url: string) => {
+      const q = decodeURIComponent(new URL(url).searchParams.get("q") ?? "");
+      const pairs =
+        q === "WBNB USDT"
+          ? [dsPair("USDT", "WBNB", { chainId: "bsc", dexId: "pancakeswap", pairAddress: real, liquidity: { usd: 20_000_000 } })]
+          : Array.from({ length: 25 }, (_, i) =>
+              dsPair("BNB", "USDT", { chainId: "solana", dexId: "raydium", pairAddress: `Fake${i}`, liquidity: { usd: 600_000_000 } })
+            );
+      return { ok: true, status: 200, json: async () => ({ pairs }) };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const pools = await new DexScreenerPoolSource().fetchPoolsForPair({ pairAssetA: "BNB", pairAssetB: "USDT" });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(pools[0]).toMatchObject({ chain: "bsc", dex: "pancakeswap", tvl: 20_000_000, address: real });
+  });
+
+  it("still fails when the plain search fails, but tolerates a failed wrapped search", async () => {
+    let n = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        n++;
+        return n === 1
+          ? { ok: true, status: 200, json: async () => ({ pairs: [dsPair("WBNB", "USDT")] }) }
+          : { ok: false, status: 429, json: async () => ({}) };
+      })
+    );
+    const pools = await new DexScreenerPoolSource().fetchPoolsForPair({ pairAssetA: "BNB", pairAssetB: "USDT" });
+    expect(pools).toHaveLength(1);
+
+    vi.stubGlobal("fetch", mockFetch(null, false, 503));
+    await expect(new DexScreenerPoolSource().fetchPoolsForPair({ pairAssetA: "BNB", pairAssetB: "USDT" })).rejects.toBeInstanceOf(
+      PoolSourceUnavailableError
+    );
+  });
+});

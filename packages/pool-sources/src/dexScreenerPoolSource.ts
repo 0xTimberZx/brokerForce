@@ -53,6 +53,28 @@ export function feeTierFromLabels(labels: string[] | undefined): number {
   return 0;
 }
 
+/** Native coins whose DEX liquidity trades as a wrapped token under its own
+ * ticker. symbolsMatch already treats these as the same asset; this only
+ * widens the search so their pools are found in the first place. */
+const WRAPPED_SEARCH_SYMBOL: Record<string, string> = {
+  BTC: "WBTC",
+  ETH: "WETH",
+  BNB: "WBNB",
+  AVAX: "WAVAX",
+  CRO: "WCRO",
+};
+
+/** The plain "A B" search, then one with each side's wrapped symbol (if any). */
+export function searchQueriesFor(a: string, b: string): string[] {
+  const wa = WRAPPED_SEARCH_SYMBOL[a.toUpperCase()];
+  const wb = WRAPPED_SEARCH_SYMBOL[b.toUpperCase()];
+  const queries = [`${a} ${b}`];
+  if (wa) queries.push(`${wa} ${b}`);
+  if (wb) queries.push(`${a} ${wb}`);
+  if (wa && wb) queries.push(`${wa} ${wb}`);
+  return queries;
+}
+
 function toFiniteOrNull(v: number | undefined): number | null {
   return typeof v === "number" && Number.isFinite(v) ? v : null;
 }
@@ -61,25 +83,35 @@ export class DexScreenerPoolSource implements PoolSource {
   constructor(private baseUrl: string = DEXSCREENER_BASE) {}
 
   async fetchPoolsForPair(query: PoolQuery): Promise<RawPoolData[]> {
-    const url = `${this.baseUrl}/latest/dex/search?q=${encodeURIComponent(
-      `${query.pairAssetA} ${query.pairAssetB}`
-    )}`;
-
-    let body: DsSearchResponse;
-    try {
-      const res = await fetch(url, {
-        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-        headers: { accept: "application/json" },
-      });
-      if (!res.ok) {
-        throw new PoolSourceUnavailableError(`DexScreener request failed (${res.status})`);
+    // The plain search ("BNB USDT") can miss a pair's main pool entirely:
+    // DexScreener returns ~30 results, and for common symbols they fill up
+    // with lookalike tokens. The deep PancakeSwap WBNB/USDT pool never showed
+    // up that way. So pairs involving a native coin are also searched under
+    // the wrapped symbol ("WBNB USDT") and the results merged. The first
+    // search must succeed (its failure is the source being unavailable);
+    // a failed extra search just contributes nothing.
+    const queries = searchQueriesFor(query.pairAssetA, query.pairAssetB);
+    const results: DsPair[][] = [];
+    for (const [i, q] of queries.entries()) {
+      try {
+        results.push(await this.search(q));
+      } catch (err) {
+        if (i === 0) throw err;
+        results.push([]);
       }
-      body = (await res.json()) as DsSearchResponse;
-    } catch (err) {
-      if (err instanceof PoolSourceUnavailableError) throw err;
-      const reason = err instanceof Error ? err.message : String(err);
-      throw new PoolSourceUnavailableError(`DexScreener unreachable: ${reason}`);
     }
+    // Wrapped-symbol results first, then the plain search: a canonical
+    // wrapped token is far harder to impersonate than a bare ticker, and the
+    // plain results can be dozens of lookalikes (some claiming $600M TVL)
+    // that would otherwise fill the MAX_POOLS cap before the real pool.
+    const merged = new Map<string, DsPair>();
+    for (const pair of [...results.slice(1).flat(), ...(results[0] ?? [])]) {
+      const key = pair.pairAddress
+        ? `${pair.chainId ?? ""}|${pair.pairAddress.toLowerCase()}`
+        : JSON.stringify(pair);
+      if (!merged.has(key)) merged.set(key, pair);
+    }
+    const body: DsSearchResponse = { pairs: [...merged.values()] };
 
     const pools: RawPoolData[] = [];
     for (const pair of body.pairs ?? []) {
@@ -115,5 +147,25 @@ export class DexScreenerPoolSource implements PoolSource {
       if (pools.length >= MAX_POOLS) break;
     }
     return pools;
+  }
+
+  private async search(q: string): Promise<DsPair[]> {
+    const url = `${this.baseUrl}/latest/dex/search?q=${encodeURIComponent(q)}`;
+    let body: DsSearchResponse;
+    try {
+      const res = await fetch(url, {
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+        headers: { accept: "application/json" },
+      });
+      if (!res.ok) {
+        throw new PoolSourceUnavailableError(`DexScreener request failed (${res.status})`);
+      }
+      body = (await res.json()) as DsSearchResponse;
+    } catch (err) {
+      if (err instanceof PoolSourceUnavailableError) throw err;
+      const reason = err instanceof Error ? err.message : String(err);
+      throw new PoolSourceUnavailableError(`DexScreener unreachable: ${reason}`);
+    }
+    return body.pairs ?? [];
   }
 }
