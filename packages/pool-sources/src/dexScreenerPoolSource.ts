@@ -64,6 +64,28 @@ const WRAPPED_SEARCH_SYMBOL: Record<string, string> = {
   CRO: "WCRO",
 };
 
+/** Canonical wrapped-token contracts, looked up by address on DexScreener
+ * (GET /token-pairs/v1/{chain}/{address}). Text search can miss a native
+ * coin's main pool entirely -- "BNB USDT" and even "WBNB USDT" never
+ * returned the deep PancakeSwap WBNB/USDT pool -- while an address lookup
+ * lists that token's own pools, deepest first, and can't be spoofed. The
+ * same addresses are seeded as native forms in apps/ingestion's
+ * token-identity.ts, so the pools found here also pass identity checks. */
+export const WRAPPED_TOKEN_ADDRESSES: Record<string, { chain: string; address: string }[]> = {
+  BNB: [{ chain: "bsc", address: "0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c" }], // WBNB
+  BTC: [
+    { chain: "ethereum", address: "0x2260fac5e5542a773aa44fbcfedf7c193bc2c599" }, // WBTC
+    { chain: "bsc", address: "0x7130d2a12b9bcbfae4f2634d864a1ee1ce3ead9c" }, // BTCB
+  ],
+  ETH: [
+    { chain: "ethereum", address: "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2" }, // WETH
+    { chain: "arbitrum", address: "0x82af49447d8a07e3bd95bd0d56f35241523fbab1" }, // WETH
+    { chain: "base", address: "0x4200000000000000000000000000000000000006" }, // WETH
+  ],
+  AVAX: [{ chain: "avalanche", address: "0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7" }], // WAVAX
+  CRO: [{ chain: "cronos", address: "0x5c7f8a570d578ed84e63fdfa7b1ee72deae1ae23" }], // WCRO
+};
+
 /** The plain "A B" search, then one with each side's wrapped symbol (if any). */
 export function searchQueriesFor(a: string, b: string): string[] {
   const wa = WRAPPED_SEARCH_SYMBOL[a.toUpperCase()];
@@ -90,22 +112,39 @@ export class DexScreenerPoolSource implements PoolSource {
     // the wrapped symbol ("WBNB USDT") and the results merged. The first
     // search must succeed (its failure is the source being unavailable);
     // a failed extra search just contributes nothing.
+    // 1) Address lookups for each side's wrapped token(s): spoof-proof, and
+    //    they return the token's deepest pools. Cached per run, since the
+    //    same token's list serves every pair it appears in.
+    const byAddress: DsPair[] = [];
+    for (const asset of [query.pairAssetA, query.pairAssetB]) {
+      for (const token of WRAPPED_TOKEN_ADDRESSES[asset.toUpperCase()] ?? []) {
+        byAddress.push(...(await this.tokenPairs(token.chain, token.address)));
+      }
+    }
+
+    // 2) Text searches: the plain "A B" search must succeed (its failure is
+    //    the source being unavailable); the wrapped-symbol variants are
+    //    extras whose failure is logged and otherwise ignored.
     const queries = searchQueriesFor(query.pairAssetA, query.pairAssetB);
     const results: DsPair[][] = [];
     for (const [i, q] of queries.entries()) {
       try {
-        results.push(await this.search(q));
+        const found = await this.search(q);
+        if (i > 0 && found.length === 0) console.warn(`  DexScreener search "${q}" returned no pairs.`);
+        results.push(found);
       } catch (err) {
         if (i === 0) throw err;
+        console.warn(`  DexScreener search "${q}" failed: ${(err as Error).message}`);
         results.push([]);
       }
     }
-    // Wrapped-symbol results first, then the plain search: a canonical
-    // wrapped token is far harder to impersonate than a bare ticker, and the
-    // plain results can be dozens of lookalikes (some claiming $600M TVL)
-    // that would otherwise fill the MAX_POOLS cap before the real pool.
+
+    // Address-lookup results first, then wrapped-symbol searches, then the
+    // plain search: most to least trustworthy. The plain results can be
+    // dozens of lookalikes (some claiming $600M TVL) that would otherwise
+    // fill the MAX_POOLS cap before the real pool.
     const merged = new Map<string, DsPair>();
-    for (const pair of [...results.slice(1).flat(), ...(results[0] ?? [])]) {
+    for (const pair of [...byAddress, ...results.slice(1).flat(), ...(results[0] ?? [])]) {
       const key = pair.pairAddress
         ? `${pair.chainId ?? ""}|${pair.pairAddress.toLowerCase()}`
         : JSON.stringify(pair);
@@ -147,6 +186,34 @@ export class DexScreenerPoolSource implements PoolSource {
       if (pools.length >= MAX_POOLS) break;
     }
     return pools;
+  }
+
+  private tokenPairsCache = new Map<string, Promise<DsPair[]>>();
+
+  /** Pools that include one exact token contract. Never throws: a failed
+   * lookup is logged and contributes nothing (and isn't cached, so the next
+   * pair retries it). */
+  private tokenPairs(chain: string, address: string): Promise<DsPair[]> {
+    const key = `${chain}|${address}`;
+    const hit = this.tokenPairsCache.get(key);
+    if (hit) return hit;
+    const p = (async () => {
+      const url = `${this.baseUrl}/token-pairs/v1/${chain}/${address}`;
+      try {
+        const res = await fetch(url, { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS), headers: { accept: "application/json" } });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const body = (await res.json()) as DsPair[] | DsSearchResponse | null;
+        const pairs = Array.isArray(body) ? body : (body?.pairs ?? []);
+        if (pairs.length === 0) console.warn(`  DexScreener token lookup ${chain}/${address} returned no pairs.`);
+        return pairs;
+      } catch (err) {
+        console.warn(`  DexScreener token lookup ${chain}/${address} failed: ${(err as Error).message}`);
+        this.tokenPairsCache.delete(key);
+        return [];
+      }
+    })();
+    this.tokenPairsCache.set(key, p);
+    return p;
   }
 
   private async search(q: string): Promise<DsPair[]> {

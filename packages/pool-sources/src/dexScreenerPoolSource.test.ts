@@ -190,41 +190,66 @@ describe("wrapped-symbol searches", () => {
     expect(searchQueriesFor("LINK", "USDC")).toEqual(["LINK USDC"]);
   });
 
-  it("finds a pool only the wrapped search returns, ahead of plain-search lookalikes", async () => {
-    const real = "0x16b9a82891338f9ba80e2d6970fdda79d1eb0dae";
-    const fetchMock = vi.fn(async (url: string) => {
-      const q = decodeURIComponent(new URL(url).searchParams.get("q") ?? "");
-      const pairs =
-        q === "WBNB USDT"
-          ? [dsPair("USDT", "WBNB", { chainId: "bsc", dexId: "pancakeswap", pairAddress: real, liquidity: { usd: 20_000_000 } })]
-          : Array.from({ length: 25 }, (_, i) =>
-              dsPair("BNB", "USDT", { chainId: "solana", dexId: "raydium", pairAddress: `Fake${i}`, liquidity: { usd: 600_000_000 } })
-            );
-      return { ok: true, status: 200, json: async () => ({ pairs }) };
+  // Routes a mocked fetch by endpoint: token lookups vs text searches.
+  function router(opts: { token?: (url: string) => unknown; search?: (q: string) => unknown; fail?: (url: string) => boolean }) {
+    return vi.fn(async (url: string) => {
+      if (opts.fail?.(url)) return { ok: false, status: 503, json: async () => ({}) };
+      const u = new URL(url);
+      const body = u.pathname.startsWith("/token-pairs/")
+        ? (opts.token?.(url) ?? [])
+        : { pairs: opts.search?.(decodeURIComponent(u.searchParams.get("q") ?? "")) ?? [] };
+      return { ok: true, status: 200, json: async () => body };
+    });
+  }
+  const fakes = Array.from({ length: 25 }, (_, i) =>
+    dsPair("BNB", "USDT", { chainId: "solana", dexId: "raydium", pairAddress: `Fake${i}`, liquidity: { usd: 600_000_000 } })
+  );
+  const real = "0x16b9a82891338f9ba80e2d6970fdda79d1eb0dae";
+  const realPool = dsPair("USDT", "WBNB", { chainId: "bsc", dexId: "pancakeswap", pairAddress: real, liquidity: { usd: 20_000_000 } });
+
+  it("finds the main pool by WBNB's address when no text search returns it", async () => {
+    const fetchMock = router({
+      token: (url) => (url.includes("/bsc/0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c") ? [realPool, dsPair("WBNB", "CAKE", { chainId: "bsc" })] : []),
+      search: () => fakes,
     });
     vi.stubGlobal("fetch", fetchMock);
     const pools = await new DexScreenerPoolSource().fetchPoolsForPair({ pairAssetA: "BNB", pairAssetB: "USDT" });
-    expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(pools[0]).toMatchObject({ chain: "bsc", dex: "pancakeswap", tvl: 20_000_000, address: real });
+    // WBNB/CAKE from the same lookup isn't this pair
+    expect(pools.some((p) => p.tvl === 1_000_000 && p.chain === "bsc")).toBe(false);
   });
 
-  it("still fails when the plain search fails, but tolerates a failed wrapped search", async () => {
-    let n = 0;
+  it("caches each token lookup across pairs within one source", async () => {
+    const fetchMock = router({ token: () => [realPool], search: () => [] });
+    vi.stubGlobal("fetch", fetchMock);
+    const source = new DexScreenerPoolSource();
+    await source.fetchPoolsForPair({ pairAssetA: "BNB", pairAssetB: "USDT" });
+    await source.fetchPoolsForPair({ pairAssetA: "BNB", pairAssetB: "USDC" });
+    const lookups = fetchMock.mock.calls.filter(([u]) => String(u).includes("/token-pairs/"));
+    expect(lookups).toHaveLength(1);
+  });
+
+  it("finds a pool only the wrapped search returns, ahead of plain-search lookalikes", async () => {
+    vi.stubGlobal("fetch", router({ search: (q) => (q === "WBNB USDT" ? [realPool] : fakes) }));
+    const pools = await new DexScreenerPoolSource().fetchPoolsForPair({ pairAssetA: "BNB", pairAssetB: "USDT" });
+    expect(pools[0]).toMatchObject({ chain: "bsc", dex: "pancakeswap", address: real });
+  });
+
+  it("tolerates failed lookups and extra searches, but fails when the plain search fails", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => {
-        n++;
-        return n === 1
-          ? { ok: true, status: 200, json: async () => ({ pairs: [dsPair("WBNB", "USDT")] }) }
-          : { ok: false, status: 429, json: async () => ({}) };
-      })
+      router({ search: () => [dsPair("WBNB", "USDT")], fail: (u) => u.includes("/token-pairs/") || u.includes("WBNB") })
     );
     const pools = await new DexScreenerPoolSource().fetchPoolsForPair({ pairAssetA: "BNB", pairAssetB: "USDT" });
     expect(pools).toHaveLength(1);
+    expect(warn.mock.calls.some(([m]) => String(m).includes("token lookup bsc/"))).toBe(true);
+    expect(warn.mock.calls.some(([m]) => String(m).includes('search "WBNB USDT" failed'))).toBe(true);
 
-    vi.stubGlobal("fetch", mockFetch(null, false, 503));
+    vi.stubGlobal("fetch", router({ fail: () => true }));
     await expect(new DexScreenerPoolSource().fetchPoolsForPair({ pairAssetA: "BNB", pairAssetB: "USDT" })).rejects.toBeInstanceOf(
       PoolSourceUnavailableError
     );
+    warn.mockRestore();
   });
 });
